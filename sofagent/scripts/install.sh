@@ -410,8 +410,7 @@ for script in task-record.sh task-orchestrate.sh; do
   fi
 done
 
-# 创建 .sofagent/ 数据目录
-SOFAGENT_DATA="${PWD}/.sofagent"
+# 创建 .sofagent/ 数据目录（复用 line 113 已定义的 SOFAGENT_DATA，不再覆盖）
 if [ ! -d "$SOFAGENT_DATA" ]; then
   mkdir -p "$SOFAGENT_DATA/task/logs" "$SOFAGENT_DATA/orchestrator/workflows"
   chmod 700 "$SOFAGENT_DATA" 2>/dev/null || true  # 权限加固：仅当前用户可访问

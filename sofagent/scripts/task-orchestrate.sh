@@ -109,7 +109,8 @@ info "编排深度: L${LEVEL} — ${LEVEL_LABEL}"
 echo ""
 
 # ── 生成任务唯一标识 ──
-TASK_SLUG=$(echo "$TASK_DESC" | shasum -a 256 2>/dev/null | cut -c1-8 || echo "unknown")
+# 修复：shasum 缺失时用 sha256sum 回退（与 load-chain.sh hash_stdin 对齐）
+TASK_SLUG=$(echo "$TASK_DESC" | { shasum -a 256 2>/dev/null || sha256sum 2>/dev/null; } | cut -c1-8 || echo "unknown")
 
 # ── 读取 orchestrator/ 配置（如果存在）──
 # honor SOFAGENT_DATA 环境变量（与 install.sh --project-dir / load-chain.sh 对齐）；缺省回退 PWD
@@ -463,7 +464,8 @@ fi
 # ── 滑窗回滚：分析最近 5 次，写降级建议 ──
 
 # 清理
-rm -f "$WORKFLOW_FILE" "${SOFAGENT_CONSTRAINT_FILE:-}"
+rm -f "$WORKFLOW_FILE"
+[ -n "${SOFAGENT_CONSTRAINT_FILE:-}" ] && rm -f "$SOFAGENT_CONSTRAINT_FILE"
 
 echo ""
 echo "  ════════════════════════════════════"

@@ -87,7 +87,8 @@ SKILL_ENFORCEMENT='
 #   哈希恒等于 SHA-256("")=e3b0c442…b855——与文件内容脱钩 → 缓存永久命中 →
 #   think.md/rules.md 改了也不再注入（约束静默失效）。
 #   hash_stdin 把工具选择放进同一管道级，数据只 pipe 一次。
-hash_stdin() { shasum -a 256 2>/dev/null || sha256sum 2>/dev/null || echo "nocache"; }
+#   修复：双缺失时用唯一值（时间戳+PID+随机数）确保缓存永不命中。
+hash_stdin() { shasum -a 256 2>/dev/null || sha256sum 2>/dev/null || echo "nocache-$(date +%s%N 2>/dev/null || date +%s)-$$-$RANDOM"; }
 
 calc_hash() {
   local combined=""
