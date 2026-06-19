@@ -109,6 +109,9 @@ else
   warn "  bash sofagent/scripts/install.sh --project-dir ~/my-project"
 fi
 
+# 数据目录变量提前统一定义——避免 set -u 下 claude/codex/hermes 收尾 summary 引用未绑定变量
+SOFAGENT_DATA="${SOFAGENT_DATA:-${PROJECT_DIR}/.sofagent}"
+
 # ── 按平台确定目标路径 ──
 case "$PLATFORM" in
   openclaw) TARGET="${OPENCLAW_STATE_DIR:-$HOME/.openclaw}" ;;

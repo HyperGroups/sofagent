@@ -80,18 +80,27 @@ SKILL_ENFORCEMENT='
 # ============================================================
 # SHA-256 计算（macOS + Linux 兼容）
 # ============================================================
+# 修复：从 stdin 算哈希时，工具选择必须在「单次管道」内完成。
+#   旧写法 `echo X | shasum || sha256sum` 在缺 shasum（精简 Linux/Alpine 容器，
+#   shasum 是 perl 脚本，sha256sum 才是 coreutils 标配）时有严重 bug：
+#   echo 的输出已被失败的 shasum 管道消费，fallback 的 sha256sum 读到空 stdin，
+#   哈希恒等于 SHA-256("")=e3b0c442…b855——与文件内容脱钩 → 缓存永久命中 →
+#   think.md/rules.md 改了也不再注入（约束静默失效）。
+#   hash_stdin 把工具选择放进同一管道级，数据只 pipe 一次。
+hash_stdin() { shasum -a 256 2>/dev/null || sha256sum 2>/dev/null || echo "nocache"; }
+
 calc_hash() {
   local combined=""
   local files=("$@")
   for f in "${files[@]}"; do
     if [ -f "$f" ]; then
-      # macOS: shasum -a 256 / Linux: sha256sum
+      # macOS: shasum -a 256 / Linux: sha256sum（文件名作参数传给两者，无 stdin 消费问题）
       combined+=$(shasum -a 256 "$f" 2>/dev/null || sha256sum "$f" 2>/dev/null || echo "")
     fi
   done
   # 加上 SKILL 强制执行的 hash（内容不变，但参与缓存判断）
-  combined+=$(echo "$SKILL_ENFORCEMENT" | shasum -a 256 2>/dev/null || sha256sum 2>/dev/null || echo "")
-  echo "$combined" | shasum -a 256 2>/dev/null | cut -d' ' -f1 || sha256sum 2>/dev/null | cut -d' ' -f1 || echo "nocache"
+  combined+=$(printf '%s' "$SKILL_ENFORCEMENT" | hash_stdin)
+  printf '%s' "$combined" | hash_stdin | cut -d' ' -f1
 }
 
 # ============================================================

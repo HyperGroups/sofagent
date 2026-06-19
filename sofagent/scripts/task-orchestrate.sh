@@ -112,7 +112,8 @@ echo ""
 TASK_SLUG=$(echo "$TASK_DESC" | shasum -a 256 2>/dev/null | cut -c1-8 || echo "unknown")
 
 # ── 读取 orchestrator/ 配置（如果存在）──
-SOFAGENT_DATA="${PWD}/.sofagent"
+# honor SOFAGENT_DATA 环境变量（与 install.sh --project-dir / load-chain.sh 对齐）；缺省回退 PWD
+SOFAGENT_DATA="${SOFAGENT_DATA:-${PWD}/.sofagent}"
 ORCHESTRATOR_DIR="${SOFAGENT_DATA}/orchestrator"
 WORKFLOWS_DIR="${ORCHESTRATOR_DIR}/workflows"
 mkdir -p "$WORKFLOWS_DIR" 2>/dev/null || true
