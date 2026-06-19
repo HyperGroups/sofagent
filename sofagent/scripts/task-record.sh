@@ -125,6 +125,11 @@ if [ "$IS_BUDGET" = true ]; then
     echo "BUDGET_CHECK: 参数不完整（需 --steps 和 --limit）"
     exit 0
   fi
+  # 防除零/非数字：--limit 0 或非整数会让 $(( )) 报错并在 set -e 下崩脚本
+  if ! [[ "$TASK_STEPS" =~ ^[0-9]+$ ]] || ! [[ "$BUDGET_LIMIT" =~ ^[1-9][0-9]*$ ]]; then
+    echo "BUDGET_CHECK: 参数无效（--steps 需非负整数，--limit 需正整数）"
+    exit 0
+  fi
   PCT=$(( TASK_STEPS * 100 / BUDGET_LIMIT ))
   if [ "$PCT" -ge 60 ]; then
     echo "BUDGET_CHECK: ${TASK_STEPS}/${BUDGET_LIMIT}=${PCT}% → ⚠️ 已达预算 60%，建议调 Loop Agent (checkpoint)"
@@ -141,7 +146,7 @@ if [ "$IS_CLOSURE_CHECK" = true ]; then
   LOG_DIR="${PWD}/.sofagent/task/logs/${MONTH}"
   LOG_FILE="${LOG_DIR}/${TODAY}.md"
   if [ -f "$LOG_FILE" ]; then
-    COUNT=$(grep -c "^## " "$LOG_FILE" 2>/dev/null || echo "0")
+    COUNT=$(grep -c "^## " "$LOG_FILE" 2>/dev/null || true); COUNT=${COUNT:-0}
     echo "CLOSURE_CHECK: ${LOG_FILE} 存在 ${COUNT} 条记录 → ✅ 已闭合"
   else
     echo "CLOSURE_CHECK: ${LOG_FILE} 不存在 → ❌ 今日无闭环记录，需警惕"

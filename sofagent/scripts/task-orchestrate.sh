@@ -249,7 +249,8 @@ case $LEVEL in
         done < <(jq -r '.inputs // {} | to_entries[] | "\(.key)=\(.value)"' "${ORCHESTRATOR_DIR}/${TASK_SLUG}.json" 2>/dev/null)
         info "Step 1-3/4 · L3 — 跳过编排，直接执行模板"
         START_TIME=$(date +%s)
-        ao run "$AO_TEMPLATE" $AO_INPUTS 2>&1; EXIT_CODE=$?
+        # set -e 下裸命令失败会立即退出 → 用 || 捕获，保证失败处理/日志可达
+        EXIT_CODE=0; ao run "$AO_TEMPLATE" $AO_INPUTS 2>&1 || EXIT_CODE=$?
         END_TIME=$(date +%s); ELAPSED=$(( END_TIME - START_TIME ))
         echo ""
         [ $EXIT_CODE -eq 0 ] && ok "任务完成（耗时 ${ELAPSED}s）" || warn "任务结束（exit $EXIT_CODE）"
@@ -291,7 +292,7 @@ if [ "$SKIP_ORCHESTRATE" = true ]; then
   info "Step 1-3/4 · L4 — 跳过编排/Harness/worktree"
   info "Step 4/4 · 直接执行任务..."
   START_TIME=$(date +%s)
-  ao run "$TASK_DESC" 2>&1; EXIT_CODE=$?
+  EXIT_CODE=0; ao run "$TASK_DESC" 2>&1 || EXIT_CODE=$?
   END_TIME=$(date +%s); ELAPSED=$(( END_TIME - START_TIME ))
   echo ""
   if [ $EXIT_CODE -eq 0 ]; then
@@ -424,8 +425,9 @@ echo ""
 info "Step 4/4 · 执行任务编排..."
 START_TIME=$(date +%s)
 
-ao run "$WORKFLOW_FILE" 2>&1
-EXIT_CODE=$?
+# set -e 下裸命令失败会立即退出（失败日志/滑窗降级都成死代码）→ 用 || 捕获
+EXIT_CODE=0
+ao run "$WORKFLOW_FILE" 2>&1 || EXIT_CODE=$?
 
 END_TIME=$(date +%s)
 ELAPSED=$(( END_TIME - START_TIME ))

@@ -22,12 +22,14 @@ trap cleanup EXIT
 JSON_MODE=false
 QUIET_MODE=false
 PLATFORM=""
-for arg in "$@"; do
-  case "$arg" in
-    --json)  JSON_MODE=true ;;
-    --quiet) QUIET_MODE=true ;;
+# 用 while+shift 解析：for arg in "$@" 里取 $2 是脚本位置参数(非"下一个arg")且 shift 无效——
+# 会导致 `--quiet --platform X` 把 PLATFORM 误设为 "--platform"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --json)  JSON_MODE=true; shift ;;
+    --quiet) QUIET_MODE=true; shift ;;
     --platform) PLATFORM="$2"; shift 2 ;;
-    --platform=*) PLATFORM="${arg#*=}" ;;
+    --platform=*) PLATFORM="${1#*=}"; shift ;;
     --help)
       echo "sofagent verify v${VERSION}"
       echo "  正常模式 彩色终端，显示所有检查项"
@@ -37,6 +39,7 @@ for arg in "$@"; do
       echo "退出码: 0=全部通过 1=存在失败项"
       exit 0
       ;;
+    *) shift ;;
   esac
 done
 
@@ -460,7 +463,7 @@ fi
 # 9.3 反思更新频率
 [ "$JSON_MODE" = false ] && echo -n "  反思更新频率: "
 if [ -f ".sofagent/think.md" ]; then
-  modified_sec=$(($(date +%s) - $(stat -f %m ".sofagent/think.md" 2>/dev/null || echo 0)))
+  modified_sec=$(($(date +%s) - $(stat -c %Y ".sofagent/think.md" 2>/dev/null || stat -f %m ".sofagent/think.md" 2>/dev/null || echo 0)))
   modified_days=$((modified_sec / 86400))
   if [ "$modified_days" -le 3 ]; then
     check_pass "think.md ${modified_days} 天前更新（活跃）"
