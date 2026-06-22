@@ -3,7 +3,7 @@
 # sofagent task-record.sh · 任务记录脚本
 # ============================================================
 # 收集标准任务数据 → 拼成 Markdown → 追加到任务日志文件。
-# 由 DeepSeek V4 Pro 辅助生成。
+# 由 DeepSeek V4 Pro 和 GLM-5.2 配合生成。
 #
 # 数据来源：
 #   1. 命令行参数（优先级最高）
@@ -24,7 +24,13 @@
 
 set -euo pipefail
 
-VERSION="1.0.0"
+VERSION="0.82"
+
+# ── 加载合规配置 ──
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "${SCRIPT_DIR}/lib/config.sh" ]; then
+  source "${SCRIPT_DIR}/lib/config.sh"
+fi
 
 # ── 参数 ──
 TASK_NAME=""
@@ -56,9 +62,9 @@ while [[ $# -gt 0 ]]; do
     --closure-check) IS_CLOSURE_CHECK=true; shift ;;
     --limit) BUDGET_LIMIT="$2"; shift 2 ;;
     --from-stdin) FROM_STDIN=true; shift ;;
-    --version) echo "sofagent-task-log v${VERSION}"; exit 0 ;;
+    --version) echo "sofagent-task-record v${VERSION}"; exit 0 ;;
     --help)
-      echo "sofagent task-log v${VERSION}"
+      echo "sofagent task-record v${VERSION}"
       echo "  记录 AI Agent 任务执行数据"
       echo ""
       echo "  常规参数:"
@@ -165,6 +171,51 @@ TIMESTAMP=$(date +"%H:%M:%S")
 # ── 创建目录 ──
 mkdir -p "$LOG_DIR"
 
+# ── 脱敏函数 ──
+# 优先级：API Key > Bearer Token > JWT > AWS Key > 凭证赋值 > 私钥 > 手机号 > 内网 IP
+sanitize() {
+  local input="$1"
+  # 1. OpenAI / Anthropic API Key
+  input=$(echo "$input" | sed -E 's/sk-(ant(-api)?-)?[a-zA-Z0-9_-]{20,}/sk-***REDACTED***/g')
+  # 2. Bearer token
+  input=$(echo "$input" | sed -E 's/Bearer +[a-zA-Z0-9._~+\/-]+=*/Bearer ***REDACTED***/g')
+  # 3. JWT token（eyJ 开头的 base64url 三段式）
+  input=$(echo "$input" | sed -E 's/eyJ[a-zA-Z0-9_-]+\.eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/***JWT-REDACTED***/g')
+  # 4. AWS Access Key（AKIA 开头，20 字符）
+  input=$(echo "$input" | sed -E 's/[[:<:]]AKIA[0-9A-Z]{16}[[:>:]]/***AWS-KEY-REDACTED***/g')
+  # 5. 凭证赋值（password= / token= / secret= / api_key= / key=）
+  #    加 [[:<:]] 词边界防误伤（如 "monkey=foo" 不会被打码）
+  input=$(echo "$input" | sed -E 's/[[:<:]](password|token|secret|api_key|key)[=:][[:space:]]*[^ ]+/\1=***REDACTED***/g')
+  # 6. 私钥块（PEM 格式：-----BEGIN ... PRIVATE KEY----- ... -----END）
+  input=$(echo "$input" | sed -E '/-----BEGIN .*PRIVATE KEY-----/,/-----END .*PRIVATE KEY-----/{
+    s/-----BEGIN .*PRIVATE KEY-----/***PRIVATE-KEY-BLOCK-REDACTED***/
+    /-----BEGIN/d
+    /-----END/d
+  }')
+  # 7. 中国大陆手机号（1[3-9] 开头 + 9 位数字，共 11 位）
+  #    加 [[:<:]] 词边界，避免误伤订单号、时间戳等长数字串
+  input=$(echo "$input" | sed -E 's/[[:<:]]1[3-9][0-9]{9}[[:>:]]/[PHONE-REDACTED]/g')
+  # 8. 内网 IP（可选，SOFA_SANITIZE_IPS=true 时启用）
+  if [ "${SOFA_SANITIZE_IPS:-}" = "true" ]; then
+    input=$(echo "$input" | sed -E 's/[[:<:]](10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)[0-9]+\.[0-9]+[[:>:]]/[INTERNAL_IP]/g')
+  fi
+  echo "$input"
+}
+
+# ── 写入前脱敏 ──
+# 用局部变量保存脱敏后值，不修改原始参数变量
+if [ "${SOFA_SANITIZE:-}" = "true" ]; then
+  SANE_TASK_NAME=$(sanitize "$TASK_NAME")
+  SANE_TASK_RESULT=$(sanitize "${TASK_RESULT:-}")
+  SANE_TASK_MODEL=$(sanitize "${TASK_MODEL:-}")
+  SANE_TASK_SKILLS=$(sanitize "${TASK_SKILLS:-}")
+else
+  SANE_TASK_NAME="$TASK_NAME"
+  SANE_TASK_RESULT="${TASK_RESULT:-}"
+  SANE_TASK_MODEL="${TASK_MODEL:-}"
+  SANE_TASK_SKILLS="${TASK_SKILLS:-}"
+fi
+
 # ── 构建 Markdown 条目 ──
 if [ ! -f "$LOG_FILE" ]; then
   echo "# ${TODAY} 任务记录" > "$LOG_FILE"
@@ -174,30 +225,41 @@ fi
 if [ "$IS_CHECKPOINT" = true ]; then
   cat << ENTRY >> "$LOG_FILE"
 
-## ${TIMESTAMP} — #checkpoint ${TASK_NAME}
+## ${TIMESTAMP} — #checkpoint ${SANE_TASK_NAME}
 
 | 字段 | 值 |
 |------|------|
-| 检查点 | ${TASK_RESULT:-评估中} |
+| 检查点 | ${SANE_TASK_RESULT:-评估中} |
 | 当前步数 | ${TASK_STEPS:--} |
 | 重试次数 | ${TASK_RETRIES:--} |
 | 已用 Token | ${TASK_TOKENS:--} |
 | 已用费用 | ${TASK_COST:--} |
-| Skills | ${TASK_SKILLS:--} |
+| Skills | ${SANE_TASK_SKILLS:--} |
 ENTRY
 else
   cat << ENTRY >> "$LOG_FILE"
 
-## ${TIMESTAMP} — ${TASK_NAME}
+## ${TIMESTAMP} — ${SANE_TASK_NAME}
 
 | 字段 | 值 |
 |------|------|
-| 状态 | ${TASK_RESULT:-未记录} |
-| 模型 | ${TASK_MODEL:-未记录} |
+| 状态 | ${SANE_TASK_RESULT:-未记录} |
+| 模型 | ${SANE_TASK_MODEL:-未记录} |
 | Token | ${TASK_TOKENS:--} |
 | 费用 | ${TASK_COST:--} |
-| Skills | ${TASK_SKILLS:--} |
+| Skills | ${SANE_TASK_SKILLS:--} |
 ENTRY
 fi
 
-echo "  已记录: ${TASK_NAME} → ${LOG_FILE}"
+echo "  已记录: ${SANE_TASK_NAME} → ${LOG_FILE}"
+
+# ── 写后概率触发 cleanup.sh ──
+if [ "${SOFA_CLEANUP_ON_RECORD:-}" = "true" ]; then
+  FREQ="${SOFA_CLEANUP_FREQUENCY:-10}"
+  if [ "$((RANDOM % FREQ))" -eq 0 ]; then
+    CLEANUP_SCRIPT="${SCRIPT_DIR}/cleanup.sh"
+    if [ -x "$CLEANUP_SCRIPT" ]; then
+      bash "$CLEANUP_SCRIPT" --force 2>/dev/null || true
+    fi
+  fi
+fi

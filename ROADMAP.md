@@ -1,11 +1,46 @@
 # 路线图 · Roadmap
 
-> 已经做了什么、接下来想做什么、哪些地方需要你的帮助。
-> v0.59 · 2026-06-18
+> 已经做了什么、未来要去哪、哪些地方需要你的帮助。
+> v0.82 · 2026-06-22 · v0.82 规划中
 
 ---
 
-## 已完成 ✅
+## 目录
+
+- [**现在在哪：v0.82**](#现在在哪v082) — 能用的、还不太行的、三个债
+- [**迭代历程**](#迭代历程) — v0.1 → v0.82，一路怎么走来的
+- [**未来去哪**](#未来去哪) — v0.9 → v1.0 → v2.x，方向不是承诺
+- [**探索方向**](#探索方向来自-v081-评审值得想但不着急做) — CI/CD Gate / Lite / 审计报告
+- [**不需要的**](#不需要的) — 想过但决定不做的事
+- [**欢迎参与**](#欢迎参与) — 你能帮什么
+
+---
+
+## 现在在哪：v0.82
+
+**能用的**：
+- OpenClaw 上，Agent 能读到宪法（4底线+10铁律），复杂任务会自动拆解，跑完会自我复盘
+- 日志会脱敏（写进文件前帮你把 API Key 打码），过期数据会清理——虽然触发方式是 `RANDOM % 10` 概率触发，不是定时任务
+- `install.sh` 一个命令装好（`git clone` 为推荐路径，也支持 `curl pipe bash`），`verify.sh` 告诉你装好没有（`--quick` 快速模式）；加载链自检声明 + 人类抽样审计也已内置
+- **daemon 已跑通**：后台进程能运行、能监控 think.md / rules.md hash 变化、能自动更新 daemon.json + 写 daemon-notice.md——macOS (launchd) 和 Linux (systemd) 已支持，Windows 宪法层仍可用
+- **治理加固已标注约束级别**：engine.md / loop-check.md 每项治理加固前标 `[软约束·全平台]`，技术负责人一眼区分 prompt 级提醒 vs 机制保障
+- **最小可信验证器**：`verify-evidence.sh` 扫描 task/logs 检查有无客观证据（测试 exit code / lint 结果）
+
+**还不太行的**：
+- **加载链靠 Agent 自觉**。OpenClaw 上有 Hook 强制注入，4底线+10铁律一定生效。v0.82 实测确认：WorkBuddy/Codex/Hermes Agent 靠主动触发或搜索加载，命中率不定。这不是 bug，是架构宿命：没有 Hook 的平台，我们控制不了
+- **治理加固仅在 OpenClaw 生效**：v0.82 五平台实测确认——步数闸 / 熔断闸 / 幂等检查 / 评判器隔离在 WorkBuddy / Codex / Hermes Agent 上全部降级或失效。文档已诚实标注，不模糊标 ⚠️
+- **数据是明文的**。`.sofagent/` 下面的反思、日志、评分——谁有文件系统权限谁就能读。我们在 SECURITY.md 里诚实写了
+- **编排引擎是外部依赖**。`ao compose` 是一个 npm 包，不在我们仓库里。离线/内网环境用不了——有 `--no-ao` 降级，但等于放弃了编排能力
+- **效果没数据**。我们说「减少 token 浪费」「降低偏离率」——都是定性感受，没有 A/B 对照。「Agent 有没有跑偏」本身就很难量化
+
+**最大的三个债**：
+1. ~~**daemon + 治理加固**~~：✅ v0.81 已完成 + v0.82 约束级别标注 + 最小消费动作 + 可信验证器
+2. **企业级**：加密、审计、多用户、批量部署——现在最多算「单人试用」
+3. ~~**跨平台实测**~~：✅ v0.82 已完成 4/5 平台（OpenClaw/WorkBuddy/Codex/Hermes Agent），Claude Code 待测。实测数据见 [docs/platform-matrix.md](./docs/platform-matrix.md)
+
+---
+
+## 迭代历程
 
 ### 治理核心（v0.1 ~ v0.4）
 
@@ -34,50 +69,291 @@
 
 ---
 
-## 下一步计划 🚧
+### v0.6x — 质量加固 ✅
 
-### v0.6x — 质量加固
-
-| 想法 | 难度 | 优先级 | 现状 |
-|------|:--:|:--:|------|
-| **新会话端到端测试** | 🧑‍🎓 | ✅ OpenClaw + WorkBuddy 已验证 | 全新 `.sofagent/` 空目录环境已实测——加载链→预判→执行→闭环反思全链路通过。已有 2 人完成 0→1 体验（docs/EVIDENCE.md） |
-| **端到端闭环验证** | 🧑‍🎓 | ✅ 已验证 | task/logs → think.md → scoring/ → orchestrator/ 完整数据流在 OpenClaw 和 WorkBuddy 均已验证写入正确 |
-| **WorkBuddy 专家团共存** | 🔧 | ✅ v0.56 已验证边界 | 🟢🟡 简单任务和平共处。🔴 复杂任务时双重编排冲突——已在 SKILL.md A0 加引擎自检（专家团激活时引擎不点火），设计边界已文档化 |
-| **load-chain.sh 脚本级权重折半** | 🔧 | ✅ v0.56 已落地 | load-chain.sh 已实现 `emit_think_downgraded` 函数：解析 `[LLM自评]` 标记位并动态追加降权提示（权重 ×0.5）。OpenClaw 平台物理降权生效；其他平台靠 SKILL.md Read 后 Agent 自觉识别 |
+| 想法 | 难度 | 现状 |
+|------|:--:|------|
+| **新会话端到端测试** | 🧑‍🎓 | ✅ OpenClaw + WorkBuddy 已验证——加载链→预判→执行→闭环反思全链路通过。已有 2 人完成 0→1 体验（docs/EVIDENCE.md） |
+| **端到端闭环验证** | 🧑‍🎓 | ✅ task/logs → think.md → scoring/ → orchestrator/ 完整数据流验证写入正确 |
+| **WorkBuddy 专家团共存** | 🔧 | ✅ 🟢🟡 任务和平共处；🔴 复杂任务双重编排冲突——SKILL.md A0 加引擎自检，设计边界已文档化 |
+| **load-chain.sh 权重折半** | 🔧 | ✅ `[LLM自评]` 标记动态降权（×0.5）。OpenClaw 物理降权生效；其他平台靠 Agent 自觉识别 |
 
 > 🧑‍🎓 = 新手友好 / 🔧 = 需要经验
 
-> ⚠️ **v0.60 发布自检发现：加载链步进脆弱性。** Agent 声称"跑了 sofagent"，实际三层加载链只读了 1/3（宪法层被跳过）。根因：加载链依赖 Agent 自觉，SKILL.md 的 ⛔ 只是文字警告。**v0.61 候选已落地四项改进**（反向锚点 / Step 指令块 / 平台分级表 / think.md 冷启动）。WorkBuddy 侧新会话验证失败（Agent 仍全跳加载链）——证实 SKILL.md 层面改不动此问题，强制力只能来自外部 Hook。OpenClaw 侧待验。A0 前置为第 0 层守门员待 v0.7x。详见 think.md 反思区。
+> ⚠️ **v0.60 发布自检发现：加载链步进脆弱性。** Agent 声称"跑了 sofagent"，实际只读了 1/3。v0.61 四项改进后 WorkBuddy 新会话仍然跳步——证实 SKILL.md 层面改不动，强制力只能来自外部 Hook。v0.64 起 OpenClaw 通过内部 hook 实现强制注入；合规三件套于 v0.70.0 落地。
 
-### v0.7x — 企业级（3 项待做）
+### v0.7x — 企业合规 ✅
 
-> v0.5x 已落地企业级基础能力（见上方「已完成 → 企业级能力」）。以下 3 项为剩余合规项。
+| 想法 | 类别 | 说明 |
+|------|:--:|------|
+| **数据保留策略** | 合规 | cleanup.sh 自动清理——按保留天数/条数上限，清理前 tar.gz 归档 |
+| **task/logs 脱敏** | 合规 | sanitize() 脱敏管道——API Key / 密码 / 手机号写入前打码，内网 IP 可选 |
+| **审计日志** | 合规 | task-record.sh 独立审计日志 + task/logs 追溯双通道，默认关闭向后兼容 |
 
-| 想法 | 类别 | 优先级 | 说明 |
-|------|:--:|:--:|------|
-| **数据保留策略** | 合规 | 🟡 | 定义 task/logs 和 think.md 的自动清理规则——保留多久、什么条件下归档 |
-| **task/logs 脱敏** | 合规 | 🟢 | 任务日志中的 API key、token、内网 IP 等敏感信息自动打码 |
-| **审计日志** | 合规 | 🟢 | 记录谁、什么时间、触发了什么编排，满足企业合规审计要求 |
+---
+
+### v0.72 — 门面实证
+
+> v0.71 修了代码里「宣称有但没实现」的功能。v0.72 修 README 里「说有但做不到」的宣称 + 给效果一个可复现的基准。不碰运行时逻辑。
+>
+> 详细开发日志见 [docs/changelog/v0.72.md](./docs/changelog/v0.72.md)
+
+| 交付物 | 类别 | 说明 |
+|------|:--:|------|
+| **README 平台能力表重构** | 诚信 | 「支持五大平台」→ 每平台实测能力差异表（加载链 / 编排引擎 / 自动化程度） |
+| **benchmark.sh** | 实证 | 10 个标准化任务 × 带不带 sofagent 对比。半自动——生成 prompt，人跑 Agent，脚本记录结果。任何人可复现 |
+| **EVIDENCE 重构** | 诚信 | 从「等你来填」空表格 → 「我们自己先出数据」。新增持续使用列 + 基准测试区 |
+| **anti-cases 反案例目录** | 诚信 | 全 PASS 比没数据更损害信誉。建标准模板，v0.72 测试中产生第一份真实反案例 |
+| **handler.ts 回归验证** | P0 | v0.71 修了第 3 层 silently 失效的 bug——v0.72 在 ≥3 个 OpenClaw 版本上验证修复真的生效 |
+| **ao compose 依赖加固** | P1 | 版本 pin + vendor snapshot + verify.sh 健康检查。不只是文档化 |
+| **engine.md 降级能力清单** | P2 | ao compose vs 默认编排的 5 项能力差异对照表 |
+
+**不包含**：think.md 记忆三规则、scoring 判断力维度、任务闸执行层——全是运行时逻辑改动，推到 v0.73。
+
+---
+
+### v0.73 — 运行时逻辑加固
+
+> v0.72 修了门面，v0.73 修运行时。三道闸门体系落地 + 编排引擎加固 + 记忆系统最小闭环 + 安装门槛降低。
+>
+> 来自技术 VP 评审 + 两份行业研究笔记（循环工程师 / Cloud Code Workflows）。
+
+| 交付物 | 类别 | 说明 |
+|------|:--:|------|
+| **任务闸执行层** | 闸门 | engine.md 加硬检查——🔴 点火前必须显式输出准入检查 PASS/REJECT，Agent 不能跳过 task-aware §1.1 直接开干 |
+| **执行闸权限边界** | 闸门 | entry-gate.md 加权限边界声明字段——不只注册「能做什么」，也声明「绝对不能做什么」 |
+| **验收闸 checklist** | 闸门 | loop-check.md 加结构化 5 项 checklist + 四维度排查（输入/环境/工具/模型）+ 防雪崩说明 |
+| **记忆三规则** | 记忆 | think.md 写入标准（≥2 次重复或可验证后果才写）+ 合并规则（同标签压缩）+ 遗忘规则（30 天降权 / 60 天归档） |
+| **scoring 判断力维度** | 指标 | 第九维——弃权率。拒绝高风险任务计正分。从「多跑多成」到「该停就停」 |
+| **编排引擎加固** | 引擎 | engine.md 检查点定义 + 显式失败分支（6 个场景）+ task-aware 停止条件字段 + --max-retries |
+| **ComplexityScorer 模型路由** | 引擎 | 50 行确定性公式：总分 = 子任务数×0.4 + 跨领域数×0.3 + 预估 token×0.2 + 含代码/报告×0.1。≥0.5 → ao compose (Pro)；<0.5 → Flash 或默认编排。engine.md A3 段 + task-orchestrate.sh `--model` 参数 |
+| **rules.md 升级** | 规范 | 从「自定义规则」→「Agent 运行规范」——含项目目标、验收标准、风险边界、停止条件 |
+| **安装门槛降低** | 体验 | 当前 4 步安装 → 目标 2 步（一 URL + 一命令）。打通 ClawHub/SkillHub 发布流程 |
+| **constitution/ 扁平化** | 重构 | `constitution/rules.md` → `rules.md`。目录只剩一个文件是历史遗留——用户改规则不用钻两层目录。install.sh 自动迁移旧路径 |
+| **ROADMAP ASCII → Mermaid** | 视觉 | 移动端渲染正常 |
+
+**行业研究来源**：
+- 循环工程师笔记 → 循环契约概念、触发器系统（daemon 定位的理论基础）
+- Workflows 笔记 → 可观测性产品化（TOI 仪表盘参考）
+- 两条笔记的详细洞察写进 ARCHITECTURE.md §五
+
+---
+
+### v0.74 — 治理层自身治理
+
+> v0.72 修了门面，v0.73 修了运行时，v0.74 修治理层自己的文档臃肿、可信度缺口和易用性短板。不碰运行时逻辑。
+>
+> 来自第三方评审（前 GitHub 维护者 + 技术 VP）：「设计精良的概念验证」→ 往「可以放心推荐」走一步。
+
+| 交付物 | 类别 | 说明 |
+|------|:--:|------|
+| **文档拆分** | 结构 | ARCHITECTURE §五 → docs/research/industry-insights.md；ROADMAP daemon 详细设计 → 指向 docs/daemon-design.md |
+| **benchmark.sh API 模式** | 实证 | 新增 `--api` 全自动路径（OpenClaw 非交互模式），减少人肉依赖 |
+| **EVIDENCE 最小模板** | 实证 | 3 个数字 + 1 句话模板，填完不超过 1 分钟 |
+| **ao compose 格式文档** | 加固 | YAML 格式写死 + task-orchestrate.sh 自动降级（不只是口头告知） |
+| **加载链自检声明** | 约束 | SKILL.md 加 L1/L2/L3 自检，缺失时提醒用户 |
+| **人类抽样审计** | 约束 | 每 10 次闭环标记一条待人类 review |
+| **verify.sh --quick** | 体验 | 4 项核心检查，5 秒出结果 |
+| **一行安装** | 体验 | `curl pipe bash`，新人 30 秒跑起来 |
+| **Scoring 基准线报告** | 指标 | 前 5 次任务输出九维基准线 + 文字解读 |
+| **文档去重** | 结构 | README 项目结构树 / ROADMAP 底部文件结构 Mermaid 二选一 |
+
+**不包含**：daemon（v0.8）、企业级（v0.9）——这 10 项没有一个依赖 daemon。
+
+---
+
+### v0.75 — 降低试用门槛 + 补可信度数据 ✅
+
+> v0.74 修了治理层自身，v0.75 修门面和可信度——让看到项目的人更愿意试一下，让试过的人能看到数据。不碰运行时逻辑。
+
+| 交付物 | 类别 | 说明 |
+|------|:--:|------|
+| **benchmark.sh A/B 数据** | 实证 | 10 个标准化任务 × 带/不带 sofagent 两组对比（待作者手动跑） |
+| **demo.gif + 架构图 + 截图** | 体验 | README 可视化——15 秒对比 gif + 两层架构图 + verify 输出截图（待录屏） |
+| **英文 README + EVIDENCE** | 社区 | README.en.md + docs/EVIDENCE.en.md，按英文社区语境重写 |
+| **Co-maintainer 招募（三级权限）** | 社区 | CONTRIBUTING 新增 Contributor→Triage→Co-maintainer 阶梯 |
+| **LICENSE 统一为 MIT** | 合规 | README 明确 MIT License（代码 + 文档统一） |
+| **verify.sh ao 版本下限检查** | 加固 | ao --version ≥ 0.7.5 检查，低于则 warn |
+| **非 OpenClaw 平台预期管理** | 诚信 | README 明确「价值约 30%」，非 bug 是架构宿命 |
+| **CI/CD + Migration Checklist** | 企业 | docs/team-deploy.md 加 GitHub Actions YAML + 7 步迁移清单 |
+| **SKILL.md 措辞软化** | 打磨 | 加载链自检改为正面表述 |
+| **verify.sh 日志格式提示** | 打磨 | handler.ts 回归段加日志格式变化提示 |
+| **SECURITY.md 供应链 + 风险声明** | 安全 | ao npm 包供应链说明 + 企业生产环境数据明文风险声明 |
+
+**不包含**：benchmark 实际跑数（#1）、demo.gif 录制（#2）——两项待作者手动完成。daemon + 加密 + 外部评估器仍推到 v0.8/v0.9。
+
+---
+
+### v0.81 — daemon 核心骨架 + 治理加固（5 项）✅
+
+**要解决什么**：让 daemon 进程存在于系统、不崩、能监控文件。同时补 5 个治理漏洞（3 个来自 Loop Engineering 笔记 + 2 个来自 sofagent-dev 前身代码）。
+
+| 交付物 | 类别 | 说明 |
+|------|:--:|------|
+| **daemon.sh + daemon-lib.sh** | daemon | 主进程 + 共享函数库：文件 hash 比对（think.md/rules.md 变更检测）、Agent 进程检测（pgrep）、daemon.json 状态读写（纯 bash，零外部依赖） |
+| **launchd/systemd 注册** | daemon | macOS launchd plist + Linux systemd user service。用户登录自动拉起，crash 自动重启 |
+| **daemon-install.sh + daemon-uninstall.sh** | daemon | 独立安装/卸载脚本：部署文件 + 注册系统服务 / 移除注册 + 清理文件 |
+| **daemon-status.sh** | daemon | 状态查询入口：运行状态、PID、运行时长、最近检测到的平台 |
+| **install.sh / verify.sh / uninstall.sh 集成** | daemon | install.sh Step 6b 可选安装 daemon；verify.sh 新增 daemon 状态检查；uninstall.sh 新增 daemon 清理 |
+| **GitHub Actions CI（Linux）** | daemon | ubuntu-latest 容器跑 systemd 测试——无 Docker 环境，push 自动验证 Linux 兼容性 |
+| **loop-check.md 独立评判器分级规则** | 治理 | 闭环验证模型分离——最优（不同模型）→ 可接受（同模型不同 session）→ 最低底线（同模型 + 重新 Read）。⛔ 禁止凭执行记忆评审 |
+| **engine.md idempotency pre-check** | 治理 | 4 类不可逆操作（git push / rm -rf / 外部 API / 数据库写入）执行前查 task/logs 幂等跳过 |
+| **ARCHITECTURE.md 意图债术语** | 治理 | SKILL.md 还的是「意图债」——不用每次任务都重新交代项目背景 |
+| **engine.md 步数闸** | 治理 | MAX_STEPS=50 + GRACE_STEPS=3 两段式预算。达硬上限注入收尾提示，超 MAX+GRACE 强制终止。来自前身 IterationGuard |
+| **engine.md 熔断闸** | 治理 | per-Agent 三态断路器（CLOSED→OPEN→HALF_OPEN），连续失败 3 次熔断冷却 30 秒。来自前身 CircuitBreaker |
+
+> 📐 **详细设计**：见 [docs/changelog/v0.81.md](./docs/changelog/v0.81.md) · daemon 设计见 [docs/daemon-design.md](./docs/daemon-design.md)
+
+---
+
+### v0.82 — 五平台实测 + v0.81 评审问题修复 ✅
+
+**要解决什么**：v0.81 做了 daemon 骨架 + 5 项治理加固，但① 五平台能力矩阵全 ❓ ② v0.81 评审挖出一批 P0/P1 文档与设计问题。v0.82 双线并行：填实测数据 + 修评审问题。
+
+#### A. 五平台实测（验证线 — ✅ 5/5 全部完成）
+
+| 交付物 | 类别 | 说明 |
+|------|:--:|------|
+| ~~**五平台实测矩阵**~~ | ✅ 验证 | 8 维度 × 5 平台全部填入实测数据 |
+| ~~**daemon 进程检测验证**~~ | ✅ 验证 | OpenClaw ✅ 命中 / Codex ✅ 可执行 / WorkBuddy ❌ 脚本缺失 / Hermes ❌ 脚本缺失 |
+| ~~**治理加固生效验证**~~ | ✅ 验证 | **结论**：步数闸/熔断闸/幂等检查/评判器隔离仅在 OpenClaw 生效，其他平台全部降级或失效 |
+| ~~**docs/platform-matrix.md 填充**~~ | ✅ 验证 | v0.81 建的模板，v0.82 已填 4 平台实测数据 |
+| **可能的 bug 修复** | 修复 | 实测发现 2 个 🔴 问题（OpenClaw Hook 注册 + WorkBuddy scripts 缺失）→ v0.83 处理 |
+
+> ⚠️ 实测底线确认：步数闸 / 熔断闸 / 幂等检查 / 评判器隔离在非 OpenClaw 平台均不生效。文档已明确标注。
+
+#### B. v0.81 评审问题修复（修复线 — ✅ 全部完成）
+
+> 来源：2026-06-22 v0.81 版本评审（GitHub 大神视角 + 科技公司技术负责人视角）。评审全文不落盘，问题转成修复任务。
+
+**P0 — 约束级别混淆 / 文档说谎**
+
+| 交付物 | 类别 | 说明 |
+|------|:--:|------|
+| ~~**治理加固约束级别标注**~~ | ✅ 修复 | engine.md 3 处 + loop-check.md 2 处加 `[软约束·全平台]` 标注行 |
+| ~~**Release Notes 显著警告**~~ | ✅ 修复 | CHANGELOG v0.81 条目顶部加验证状态警告框 |
+| ~~**daemon.json 迁移触发条件**~~ | ✅ 修复 | daemon-lib.sh 加 `# TODO-v0.9` 注释 + 迁移触发条件 |
+| ~~**daemon 最小消费动作**~~ | ✅ 修复 | daemon.sh 检测 think.md / rules.md 变化后写 daemon-notice.md |
+
+**P1 — 可维护性 / 可信度**
+
+| 交付物 | 类别 | 说明 |
+|------|:--:|------|
+| ~~**文档去重**~~ | ✅ 修复 | LIMITATIONS.md 已创建，ARCHITECTURE/HANDBOOK/DEVELOPMENT/README 共 9 处引用已全部改为指向 LIMITATIONS.md |
+| ~~**最小可信验证器**~~ | ✅ 修复 | 新增 verify-evidence.sh（扫描 task/logs 检查客观证据），loop-check.md 加引导行 |
+
+**P2 — 工程打磨**
+
+| 交付物 | 类别 | 说明 |
+|------|:--:|------|
+| ~~**CHANGELOG 版本号说明**~~ | ✅ 打磨 | CHANGELOG 顶部新增「版本号说明」段，逐段解释 v0.47-v0.81 版本号跳跃 |
+| ~~**README 安装路径调整**~~ | ✅ 打磨 | git clone 提为推荐路径，curl pipe bash 降为备选（中英文两版） |
+| ~~**平台名规范化：Hermes → Hermes Agent**~~ | ✅ 打磨 | 15 文件 19 处展示名替换（代码逻辑保持不变）；GitHub 标签已改为 hermes-agent |
+
+**不包含**：新功能开发。v0.82 是验证 + 修复版本，不叠新治理概念。
+
+> ⚠️ **诚实声明**：作者不一定有全部 5 个平台的环境（特别是 Codex 和 Hermes Agent）。没有环境的平台标「未测」，不编数据。
+
+---
+
+## 未来去哪
+
+> ⚠️ 诚实地说：下面的内容是**方向**，不是承诺。每个版本做不做、做成什么样，取决于我们有限的精力和社区的反馈。没实测过的事，我们标「不知道」——不画饼。
+
+### v0.9 — 企业级 + Beta
+
+**要解决什么**：让一个技术负责人看完文档后，至少愿意说「你们团队可以试试」。
+
+#### 企业级加固
+
+| 维度 | 交付物 | 说明 |
+|------|------|------|
+| **数据加密** | age 加密 think.md + task/logs | 为什么 age 不是 gpg？age 只要一个二进制文件，没有配置、没有密钥环——对「零依赖」哲学更合适。默认关闭，不影响老用户 |
+| **脱敏增强** | sanitize() 追加 JWT / AWS Key / PEM 私钥 | 当前只覆盖 API Key + 密码 + 内网 IP |
+| **审计报告** | `audit.sh --report` 一键导出 | 不是散落的日志行——是「谁在什么时间做了什么操作、涉及哪些文件」 |
+| **保留策略强制执行** | daemon 定时调 cleanup.sh | 替代概率触发——合规的基础要求。v0.81 daemon 骨架跑稳后落地 |
+| **多用户隔离** | 同机权限隔离 + 共享 rules.md | 团队共享团队规则，各自独立反思 |
+| **记忆架构升级** | Ledger-Views-Policy 三层模型 | task/logs（原始账本）→ 按主题/标签的视图层 → 蒸馏/遗忘/同步策略。为内容寻址和智能推荐打底 |
+| **双时态数据** | 每条数据记录生效时间 + 写入时间 | 区分历史状态与当前记录——审计和记忆版本管理的基础 |
+| **ECC 成本感知流水线** | 按复杂度路由 → 预算检查 → 窄范围重试 → 提示缓存 | ComplexityScorer（v0.73）只做了第一步，此处补全后三步。降低企业用户的模型成本浪费 |
+| **OpenViking 三级记忆加载** | L0 Abstract(~100 token) / L1 Overview(~2000 token) / L2 Full 三级加载 | 反思条目爆炸时自动压缩为摘要+概览，Agent 按需展开。**前提**：v0.81 daemon 稳定运行 ≥30 天 + 反思 ≥30 条 |
+| **团队部署** | `install.sh --enterprise` 从统一配置源拉取 | 不是 20 个人手动装 20 次 |
+| **容器部署** | `docker compose up` 就能跑 | 企业「试一下」的门槛降到一条命令 |
+| **Skill 自进化** | 借鉴微软 SkillOpt 方法论，纯 MD + scoring 实现三条原则 | Skill 迭代闭环 |
+
+> #### Skill 自进化详解（借鉴 SkillOpt）
+>
+> **SkillOpt 是什么**：微软研究院开源的方法（2026-05），核心思路是把 Skill 文档当成模型的「外部状态」来训练——像训神经网络一样训 Agent Skill。52/52 任务取得最优，超越人工手写、LLM 直接生成等所有基线。
+>
+> **SkillOpt 四步循环**：Rollout（跑任务记录得分）→ Reflect（分析成败 minibatch 找规律）→ Edit（在预算内做 add/delete/replace）→ Gate（只在 held-out 验证集上得分提高时才接受编辑）。关键创新是**文本学习率**——限制每次编辑规模，防止一次性大改覆盖好规则。
+>
+> **sofagent 的 scoring vs SkillOpt**：
+>
+> | 维度 | SkillOpt | sofagent scoring |
+> |------|---------|-----------------|
+> | 做什么 | 自动优化 Skill 文档内容 | 按使用频率调整 Skill 信任等级 |
+> | 怎么做 | rollout → reflect → edit → gate 四步循环 | 被动观察 → 打分 → 升降权 |
+> | 核心产出 | best_skill.md（优化后的 Skill） | scoring/_index.md（信任等级表） |
+> | 依赖 | Python + 优化器模型 + 验证集 | 零依赖，bash + MD 文件 |
+>
+> scoring 是「观察+打分」，SkillOpt 是「训练+优化」——同一方向，不同深度。
+>
+> **借鉴三原则（纯 MD + scoring 实现，零外部依赖）**：
+>
+> | SkillOpt 概念 | sofagent 落地方式 |
+> |---------------|-------------------|
+> | **文本学习率** | Skill 每次迭代只允许改 ≤N 处，防止大改覆盖好规则。类比神经网络 learning rate：步长太大不收敛，太小学不到东西 |
+> | **Held-out Gate** | 新 Skill 必须在**未见过的任务类型**上跑过且 scoring 得分更高才替换旧版。防止对老任务过拟合——Skill 越通用越好，不是越熟越好 |
+> | **拒绝缓冲区** | 被 Gate 拒绝的编辑不扔掉，留 `#rejected` 标签记录已尝试方向。下次迭代避开死胡同，不在原地打转 |
+>
+> **为什么不直接用 SkillOpt 代码**：SkillOpt 是 Python 研究框架，依赖优化器模型 + 验证集 + 多次 rollout。sofagent 是零依赖纯 bash + MD，引入 SkillOpt = 引入 Python + GPU + 验证基础设施——跟零依赖哲学冲突。方法论可以抄，代码不引入。
+
+**不包含**：不会说「企业级已就绪」——这会让真正搞企业安全的人笑出声。我们会说「企业级能力初具雏形，欢迎安全审计」。
+
+#### Beta 公测
+
+| 交付物 | 说明 |
+|------|------|
+| **Beta 招募** | README 喊 20 个用户（至少 2 个企业场景），给 30 天试用指南 |
+| **EVIDENCE 模板** | 用了多少次、踩了什么坑、企业场景特殊需求 |
+| **Bug-only 迭代** | Beta 期间不加新功能，只修反馈 |
+| **企业部署指南** | 独立文档：安全评估 / 部署架构 / 运维手册 / 应急预案 |
+
+---
+
+### v1.0 — 正式版
+
+**什么时候发**：当下面这些条件同时满足：
+
+- daemon 在 macOS 和 Linux 上稳定运行 ≥ 30 天
+- 至少 3 个外部用户的 30 天使用数据（不是我们自己填的 EVIDENCE）
+- install → verify → 首次任务通过率 ≥ 90%（现在是多少——我们不知道）
+- 安全文档更新到 v1.0（含加密方案、审计能力、已知局限）
+- 能力矩阵五个平台都有实测数据，不空着任何一个格子
+
+**发布动作**：GitHub Release + 更新 ClawHub / SkillHub + 一篇「v1.0 是什么、不是什么」的公告。
+
+---
 
 ### v1.x — v1.0 发布后
 
-> v1.0 定义为：v0.6x + v0.7x 全部完成，核心治理循环稳定，具备首个正式 Release 条件。以下为发布后的持续演进方向。
+| 想法 | 难度 | 说明 |
+|------|:--:|------|
+| **Loop 检查点自适应** | 🔧 | 检查点数量随编排深度自适应——跑熟了少浪费 token |
+| **Loop 驱动编排深度** | 🔧 | 编排深度不再只看成功率——也看过程平稳度 |
+| **规划器角色分离** | 🔧 | 参考 Anthropic 四角色模型，将规划器从主 Agent 拆出来。架构已预留 |
+| **`/review` 命令** | 🔧 | 任务跑完主动问「要不要总结一下这次用了哪些 Skill、踩了哪些坑？」 |
+| **Skill 反向校验** | 🧑‍🎓 | 当前只看「用了几次」——加 30 天零触发提醒，帮你发现僵尸 Skill |
+| **外部评估器** | 🔧 | 不靠 Agent 自评——bash 脚本跑确定性代码评估，输出 JSON 分数。偷了 Coze Loop 的思路，但零外部依赖 |
+| **Windows 支持（待需求验证）** | 🔧 | 若 v0.81 五平台验证显示 Windows 用户有实质需求，走 PowerShell 平行实现路线——bash 版本不动，新增 `.ps1` 文件。不换语言，不引入编译工具链。install.sh 检测到 Windows 时调 PowerShell 版本，用「任务计划程序」注册后台服务 |
 
-| 想法 | 难度 | 优先级 | 说明 |
-|------|:--:|:--:|------|
-| **Loop 检查点自适应** | 🔧 | 🔴 | 检查点数量随编排深度自适应——L1 全走、L2 跳子任务间、L3 仅 60%、L4 仅重大操作前。跑熟了少浪费 token |
-| **Loop 驱动编排深度** | 🔧 | 🔴 | 编排深度不再只看成功率——也看过程平稳度。连续3次全🟢自动晋升，出现过🟡全量重编排则标记模板待验证 |
-| **Device 端常驻脚本（daemon）** | 🔧 | 🔴 | 本地后台进程持续运行，与 sofagent 自有云服务对接——监控 Agent 状态、推送复盘提醒、同步 think.md。解决「软约束在上下文外不生效」的架构宿命。**v2.x 多 Agent 协同的前置依赖** |
-| **规划器角色分离** | 🔧 | 🟡 | 参考 Anthropic 四角色模型，将规划器从主 Agent 拆为独立子 Skill。架构已预留 |
-| **`/review` 命令** | 🔧 | 🟡 | 任务闭环时主动问「要不要总结一下这次用了哪些 Skill、踩了哪些坑？」——把可追溯性变成可消费性 |
-| **Skill 反向校验** | 🧑‍🎓 | 🟡 | 当前 skill-iterate 只看「用了几次」——不检查「为什么一直没人用」。加 30 天零触发提醒 |
-| **外部评估器集成（可选）** | 🔧 | 🟢 | 支持接入 DeepEval / ASSERT 等第三方评估工具作为独立评分来源，与 loop-check 自评做交叉验证。优先实现轻量方案——bash 脚本评估器（`evaluator: bash scripts/eval-{task}.sh`），零外部依赖，输出 JSON 格式分数字段。参考 Coze Loop 的 Code Evaluator 概念；不是搬代码，是偷「用确定性代码跑评估，不靠 LLM 自评」的思路 |
+---
 
 ### v2.x — 多 Agent 协同（规划中）
 
 > **核心洞察**：不同 Agent 的技术架构会有差异（不同模型、不同平台、不同能力），就像不同性格的人各有所长。无头盒子的优势在于——多个设备装上 Agent 后，各自独立运行但可以通过一个「路由器」协同工作。这不是把一个 Agent 拆成多个，而是让已有的多个独立 Agent 像团队一样协作。
 
-**为什么是 v2.x**：v1.x 的「Device 端常驻脚本（daemon）」是前置条件——先让单个设备上的 Agent 活过 session 边界（跨 session 持久化），才能谈多设备协同（跨设备联邦）。
+**为什么是 v2.x**：v0.8 的 daemon 是前置条件——先让单个设备上的 Agent 活过 session 边界，才能谈多设备协同。
 
 | 想法 | 难度 | 优先级 | 说明 |
 |------|:--:|:--:|------|
@@ -89,20 +365,51 @@
 | **分布式反思同步** | 🔧 | 🟡 | 多个 Agent 的 think.md 反思区定期汇聚到路由器。A 设备踩的坑 → B 设备自动避开。置信度标记设备来源，防止单一设备的偏见污染全局经验 |
 | **Agent 网络认证与安全** | 🔧 | 🟡 | 跨设备 Agent 互信机制——只有经过认证的设备才能加入协同网络。初期用预共享密钥（PSK）+ 设备指纹，后期考虑 mTLS |
 | **任务失败转移** | 🔧 | 🟡 | 设备 Agent 执行子任务超时/失败时，路由器自动重分配到候补设备，或降级为 LLM-only 模式。保障多设备协同的鲁棒性 |
+| **协同价值场景验证** | 🔧 | 🔴 | 逐一验证四类团队场景——新人上手加速 / 问题排查协作 / 最佳实践沉淀 / 任务交接。每个场景跑通一个真实用户故事 |
 
 **架构演进路径**：
 
+```mermaid
+flowchart LR
+    subgraph v06_v07["v0.6–v0.7 (released)"]
+        direction TB
+        F1["foundation<br/>4-base<br/>10-rules<br/>compliance"]
+    end
+    subgraph v072["v0.72 (evidence)"]
+        direction TB
+        F2["README honest<br/>benchmark<br/>anti-cases"]
+    end
+    subgraph v073["v0.73 (gate hardening)"]
+        direction TB
+        F3["3 gates<br/>exec gate<br/>checkpoint<br/>memory rules"]
+    end
+    subgraph v08["v0.81 (daemon + hardening)"]
+        direction TB
+        F4["daemon<br/>step limiter<br/>circuit breaker<br/>idempotency"]
+    end
+    subgraph v082["v0.82 (validation)"]
+        direction TB
+        F4b["5-platform<br/>matrix fill<br/>bug fixes"]
+    end
+    subgraph v09["v0.9 (enterprise + beta)"]
+        direction TB
+        F5["enterprise<br/>age encrypt<br/>audit report<br/>multi-user"]
+    end
+    subgraph v10["v1.0 (stable)"]
+        direction TB
+        F6["stable<br/>daemon 30d<br/>3+ users<br/>90% pass"]
+    end
+    subgraph v2x["v2.x (router)"]
+        direction TB
+        F7["router<br/>mac / win / linux<br/>cross-device fed."]
+    end
+
+    F1 --> F2 --> F3 --> F4 --> F4b --> F5 --> F6 --> F7
 ```
-v0.5x (当前)               v0.6x ~ v0.7x             v1.x                       v2.x
-┌─────────────┐       ┌───────────────────┐    ┌─────────────┐          ┌──────────────────┐
-│ 单设备       │       │ 质量加固 + 企业合规  │    │ 单设备        │          │       路由器       │
-│ 主 Agent     │  →    │ 新会话测试 / E2E   │ →  │ daemon 常驻  │    →     │   ┌──┼──┼──┐     │
-│ ├─ 子 Agent  │       │ 脱敏 / 审计 / 保留  │    │ 跨 session   │          │   ▼  ▼  ▼  ▼     │
-│ └─ 子 Agent  │       └───────────────────┘    │ 持久化监控   │          │  设备A 设备B 设备C │
-│ (用完即焚)    │                                └─────────────┘          │  (mac)(win)(linux) │
-└─────────────┘                                                          └──────────────────┘
- session 隔离        夯实单设备基础                 跨 session 生命周期           跨设备联邦
-```
+
+> 每一列底部分别对应：治理地基+合规 → 门面实证 → 运行时加固 → daemon 骨架+治理加固 → 五平台实测数据填充 → 生产级地基 → 正式发布 → 跨设备联邦治理
+
+> 💡 图中每个 box 的内容用英文（短词）保证等宽对齐；中文副标题在下方解释，避免中英混排时 box 塌陷。
 
 **为什么路由器不是 sofagent 已经拒绝的方向**：
 
@@ -119,7 +426,53 @@ v0.5x (当前)               v0.6x ~ v0.7x             v1.x                     
 - **治理不僭越**：路由器只管「谁干什么、怎么配合」，不管每个 Agent 内部的底线和铁律——那是 SKILL.md 的事
 
 ---
-## 不需要的 ❌
+
+## 探索方向（来自 v0.81 评审，值得想但不着急做）
+
+> 2026-06-22 v0.81 版本评审中提出的产品方向。不是版本承诺，是值得探索的角度——记下来防止遗忘，等主线（daemon 验证 → v0.9 企业级 → v1.0 正式版）稳了之后再回头看。
+
+### ① sofagent as CI/CD Gate
+
+**一句话**：把"4 底线 + 10 铁律"打包成 GitHub Action——每次 PR 自动检查 Agent 生成的代码是否符合铁律（有没有先读后写、有没有验证再继续）。
+
+**为什么值得探索**：这不是 sofagent 的核心场景，但是**最容易变现的场景**。企业不在乎你的 Agent 反思了什么，在乎的是 Agent 写的代码有没有违规。CI gate 是企业已经买单的形态——不需要教育市场。
+
+**难度**：🔧 中等。铁律是 prompt 级（给 Agent 读的），转成 CI 检查需要把"先读后写""验证再继续"翻译成可程序化判定的规则（文件读取记录在 commit 前还是后、测试 exit code 是否非零）。部分铁律天然不可程序化（#5 不确定就问、#8 目标驱动）——先做可程序化的 6-7 条。
+
+**位置**：v1.x 探索项。等 v0.82 平台验证 + v0.9 企业级有雏形后评估。
+
+### ② sofagent Lite
+
+**一句话**：当前版本对非 OpenClaw 用户太重了——6 个 Skill 文件 + 5 个脚本 + 3 层加载链。做一个"只有宪法（SKILL.md）+ 反思（think.md）"的极简版，面向 Codex / Hermes Agent / Claude Code 用户。
+
+**为什么值得探索**：降低 80% 的复杂度，保留 60% 的价值。非 OpenClaw 平台本来加载链就不可靠（Agent 经常跳步）——与其假装全功能，不如给一个诚实的极简版：宪法生效（100%）+ 反思靠 Agent 自觉（~60%），不假装编排引擎能用。
+
+**难度**：🧑‍🎓 低。主要是打包工作——从现有文件里抽出 SKILL.md + think.md 模板 + 一行安装脚本。`install.sh --lite` 参数即可。
+
+**位置**：v0.9 或 v1.0 配套。作为降低试用门槛的补充。
+
+### ③ Agent 行为审计报告（反向产品化）
+
+**一句话**：不卖治理层，卖审计——把 task/logs + think.md 转成"你的 Agent 这周做了什么、哪里可能有问题、有没有违反铁律"的周报。
+
+**为什么值得探索**：企业买单的不是"让 Agent 守规矩"，是"知道 Agent 有没有守规矩"。审计报告是**检测结果**而非**预防机制**——即使 Agent 不守规矩（治理层失效），审计报告依然能告诉你它哪里没守。这是治理层失效时的兜底。
+
+**难度**：🔧 中等。task/logs 已经是结构化 Markdown，写一个 `report.sh` 读取本周日志 + 按铁律维度汇总即可。难点在于"违反铁律"的检测——大部分铁律不可程序化判定，需要 LLM 辅助分析（但这又回到了 LLM 自评问题）。
+
+**位置**：v0.9 企业级配套，或独立探索。
+
+### 这三个方向的共同特征
+
+| 方向 | 面向谁 | 变现难度 | 与主线的关系 |
+|------|:--:|:--:|------|
+| CI/CD Gate | 工程团队 / DevOps | 🟢 低 | 治理层规则的产品化包装 |
+| sofagent Lite | 个人开发者 | 🟡 中 | 降低试用门槛 |
+| 审计报告 | 企业管理者 / 合规 | 🟢 低 | 治理层失效时的兜底 |
+
+> 💡 这三个方向都不依赖 daemon——也就是说，即使 daemon 方向最终被平台原生能力吃掉，这三个产品化方向依然成立。这是 sofagent 的 B 计划。
+
+---
+## 不需要的
 
 以下是我们认真考虑过但决定不做的事情，以及为什么：
 
@@ -129,6 +482,7 @@ v0.5x (当前)               v0.6x ~ v0.7x             v1.x                     
 | 定时触发（cron） | 当前所有 Agent 平台都不支持 cron 级定时。等平台演进 |
 | 动态 Skill Hook | OpenClaw 不支持 Skill 级动态 Hook。等平台支持 |
 | Connector（连接外部系统） | sofagent 是治理层，不是自动化流水线。Markdown 文件就是接口 |
+| **记忆压缩自动化（reminder.md / _recent.md / 日周月蒸馏）** | ❌ **路线已废弃**。v0.56 之前试过记忆分层（日/周/月 13 条窗口），后已取消。每个 Agent 有自己的记忆，让它读自己的记忆内容即可——daemon 层不做蒸馏 |
 
 ---
 
@@ -136,19 +490,15 @@ v0.5x (当前)               v0.6x ~ v0.7x             v1.x                     
 
 想参与但不知道从哪开始？
 
-| 任务 | 难度 | 预估时间 | 说明 |
-|------|:--:|:--:|------|
-| 跨平台测试 | 🧑‍🎓 | 30 分钟 | 你有 Claude Code / Codex / Hermes？装一下种子指令方案，告诉我们能不能跑通 |
-| 补充 FAQ | 🧑‍🎓 | 20 分钟 | 你在用 sofagent 时踩了什么坑？直接提 PR 加到 Handbook §六 |
-| 文档翻译 | 🧑‍🎓 | 1-2 小时 | Handbook 目前只有中文，英文翻译对社区意义巨大 |
-| 第三方证据 | 🧑‍🎓 | 1 周 | 装完用一周，填 docs/EVIDENCE.md 表格——Case 001 已收入（2026-06-18 @cedric123123），持续收集中 |
+| 你能做的事 | 大约多久 | 说明 |
+|------|:--:|------|
+| 跨平台测试 | 30 分钟 | 你有 Codex / Hermes Agent / Claude Code？装一下，告诉我们能不能跑通——哪怕只告诉我们「跑不通」也有用 |
+| 补充 FAQ | 20 分钟 | 你踩了什么坑？直接改 Handbook §六 |
+| 文档翻译 | 1-2 小时 | Handbook 只有中文，英文翻译对社区意义巨大 |
+| 第三方证据 | 1 周 | 装完用一周，填 EVIDENCE.md。你的真实数据比我们的自我感觉有用一万倍 |
+| 安全审计 | 不限 | 你是安全工程师？欢迎给 SECURITY.md 挑刺 |
+| 企业场景反馈 | 30 分钟 | 你们团队怎么用 Agent？有什么 sofagent 应该做但没做的？直接开 Issue |
 
-以上任何一个想法，如果你有兴趣实现——直接开 Issue 讨论或提 PR。
-
-特别是：
-- **专家团共存**：熟悉 WorkBuddy 机制的开发者特别需要你的视角
-- **跨平台测试**：你有 Claude Code / Codex / Hermes 的环境？帮我们测一下种子指令方案
-
-没写过开源项目？没关系——这个项目的作者也没写过代码。所有文件都是和 AI 合作生成的，你的想法比你的代码量重要。
+以上任何一个想法，如果你有兴趣——直接开 Issue 讨论或提 PR。没写过开源项目？没关系——这个项目的作者也没写过代码。所有文件都是和 AI 合作生成的，**你的想法比你的代码量重要**。
 
 → [CONTRIBUTING.md](./CONTRIBUTING.md)

@@ -1,4 +1,4 @@
-# sofagent Design
+# sofagent Architecture
 
 > 一个完全不懂代码的产品经理，在设计 Agent 治理层时都想了些什么。
 >
@@ -6,7 +6,7 @@
 >
 > 各节按 Handbook 章节顺序排列，方便两边对照着读。
 >
-> v0.63 · 2026-06-19 · 孔放勋
+> > v0.82 · 2026-06-22 · 孔放勋
 
 <img src="images/sofagent.png" alt="sofagent" width="300" />
 
@@ -43,7 +43,7 @@ sofagent 选的是后者。不是因为前者不重要，是因为前者会被�
 
 设计上参考了 Anthropic Managed Agents 的四层架构：
 - 解耦脑和手：模型规划决策，执行在独立沙盒
-- 宠物变工具：Agent 是无状态 disposable worker，崩了就销毁（子 Agent 用完即焚）
+- 宠物变工具：Agent 是无状态 disposable worker，崩了就销毁（子 Agent 脏数据隔离）
 - Agent ≠ Session：静态模板 vs 动态实例
 - Loop > Prompt：设计循环让系统自己跑，不逐个写提示词
 - 记忆是决策通道：核心不在存了多少，在历史→决策的转换效率
@@ -61,12 +61,9 @@ sofagent 不是把所有东西堆在一起。它分两层：
 
 地基轻、引擎重——这是有意为之。如果地基也重，Agent 连简单对话都走不动。
 
-**为什么分开**：
-- 地基是整个会话的前提——不管 Agent 处理什么任务，宪法、反思、偏好都在上下文里
-- 引擎是任务级别的工具——只在需要的时刻激活，用完就停
-- 加载链不属于 engine.md 的一个步骤——把它从引擎里拆出来放到 SKILL.md 最前面，让 🟢🟡 简单任务也能享受完整的治理底座
+**为什么分开**：地基是整个会话的前提（宪法、反思、偏好常驻上下文），引擎是任务级别的工具（只在 🔴 复杂任务时激活）。加载链从引擎拆到 SKILL.md 最前面，让 🟢🟡 简单任务也享受完整治理底座——简单任务时反思区不在上下文，Agent 不知道上次踩了什么坑，地基常驻解决了这个「治理盲区」。
 
-这一改动来自实际使用中的教训：简单任务时反思区不在上下文，Agent 不知道上次踩了什么坑；用户偏好在简单任务时完全失效。地基常驻解决了这个「治理盲区」。
+SKILL.md 和 rules.md 还的是「意图债」——不用每次任务都重新交代项目背景、规则和已知坑点。
 
 <a id="why-resident"></a>
 如果加载链只在复杂任务时才激活，后果很清楚：
@@ -78,6 +75,18 @@ sofagent 不是把所有东西堆在一起。它分两层：
 | 只有 SKILL.md 底线 | 底线能用但行为规范丢失 |
 
 这就是为什么地基不跟引擎走——治理底座必须永远在线，不管任务简单还是复杂。
+
+### 产品架构展望（三层）
+
+当前产品是两层（地基+引擎），最终形态是三层。每层独立验证，下层为上层的底座：
+
+| 层 | 部署在哪 | 干什么 | 当前状态 |
+|:--:|------|------|:--:|
+| **治理层** | Agent 上下文 | SKILL.md（宪法）、engine.md（编排）、think.md（反思）、rules.md（规则）——纯 MD 文件，Agent 读即生效 | ✅ 已可用 |
+| **执行层** | 用户设备 | daemon 常驻进程——跨 session 经验不丢失、定时清理、Agent 启动提醒。不依赖任何 Agent 平台 | v0.8 开发中 |
+| **协同层** | 局域网/内网 | router——多设备 Agent 能力画像匹配、任务分发、反思同步 | v2.x 规划中 |
+
+为什么从 Skill 开始自底向上：先验证治理内容本身有效，再加 daemon 保证它跨 session 生效，最后用 router 让多设备像团队一样协同。每层跑通再加下一层——不推翻已验证的东西。
 
 <a id="skill-runtime"></a>
 ### 为什么是 Skill + 脚本 + Runtime，不是纯 Skill 或纯代码
@@ -122,7 +131,7 @@ sofagent 的三个核心设计选择，在独立研究中得到了方向性印�
 
 > ⚠️ **诚实声明**：以上为各研究在自己实验条件下的定性结论，sofagent 核心效果尚未实测（见 §三「核心效果未实测」）。Self Harness / Skill Reducer 的具体百分比数字是它们在各自实验集上的结果，不代表 sofagent 能达到相同效果——sofagent 的 OpenClaw 路径有工程隔离（session.spawn），可类比引用；非 OpenClaw 路径只有 prompt 级约束，不引用具体数字。Self Harness / Skill Reducer 的论文链接待补（致谢表其他引用均有 arXiv 号，这两篇暂缺，欢迎补充）。
 
-这些不是我们引用外部研究来证明自己正确——而是两个完全独立的团队，从不同起点出发，得出了方向重叠的结论。这印证了 sofagent 的架构直觉是结构驱动的，不是巧合。
+这些不是我们引用外部研究来证明自己正确——而是两个完全独立的团队，从不同起点出发，得出了方向重叠的结论。
 
 ---
 
@@ -159,7 +168,7 @@ sofagent 的三个核心设计选择，在独立研究中得到了方向性印�
 
 加载顺序受 Lost in the Middle 约束：SKILL.md 放最前面（开头注意力最高），rules.md 放最后面（末尾注意力最高）。中间的 think.md 是参考信息，不是硬约束。
 
-技术实现用的是 OpenClaw 的 `before_prompt_build` Hook——在 OpenClaw 自己读完 `SOUL.md` / `identity.md` / `USER.md` 之后，sofagent 再注入自己的约束块。v0.62.1 起，load-chain.sh 注入全部三层（SKILL.md 宪法 + think.md + rules.md），其中宪法部分与 skill 系统注入形成防御性冗余——~250 token 冗余可接受，防止单点失效。SHA-256 缓存检测文件变化——没变就不重新读，省 token。
+技术实现用的是 OpenClaw 2026.6.x 的内部 hook 架构——声明式注册 `sofagent-load-chain`（HOOK.md + handler.ts）到 `~/.openclaw/hooks/`，监听 `agent:bootstrap` 事件，在 Agent 启动时把 think.md（第 2 层）和 rules.md（第 3 层）注入 bootstrap 文件列表。第 1 层宪法由 skill 系统自动注入，hook 不重复。旧版 `load-chain.sh`（config.json.before_prompt_build shell hook）在 2026.6.x 已失效，v0.64 起删除。
 
 ### 铁律为什么是 10 则（[Handbook §三](./HANDBOOK.md#三底线与铁律)）
 
@@ -197,7 +206,7 @@ sofagent 的三个核心设计选择，在独立研究中得到了方向性印�
 
 **为什么是独立 Agent 而不是代码逻辑**：因为 Loop 需要读 think.md（反思数据）+ task/logs（历史数据）+ orchestrator/（最优配置）做综合判断——这正是 Agent 的长项（语义理解、模式识别），不是脚本的长项。
 
-**跨平台**：主 Agent 主动暂停调用——不依赖 Hook、不依赖代码拦截。OpenClaw / WorkBuddy / Claude Code / Codex / Hermes 全平台通用。
+**跨平台**：主 Agent 主动暂停调用——不依赖 Hook、不依赖代码拦截。OpenClaw / WorkBuddy / Codex / Hermes Agent / Claude Code 全平台通用。
 
 <a id="session-boundary"></a>
 ### Session 边界：为什么用百分比而不是轮次
@@ -206,7 +215,7 @@ sofagent 的三个核心设计选择，在独立研究中得到了方向性印�
 
 为什么用百分比？因为模型上下文窗口在持续变大——你今天 128K 能聊 30 轮，明年 256K 可能 60 轮才该切。百分比跟着硬件走，轮次限制是刻舟求剑。30% 的余量留给新 session 的加载链 + Skill + 任务本身。
 
-**子 Agent 不参与这套机制。** 子 Agent 作用域窄（单子任务），设计上就是一个任务跑到销毁。如果子任务大到导致子 Agent 上下文溢出——那是编排拆得不够细，问题出在 ao compose 的任务拆分上。中间检查点已提供兜底。不搞子级反思、不拆分重开——子 Agent 用完即焚，别往它的短生命周期里塞复杂逻辑。
+**子 Agent 不参与这套机制。** 子 Agent 作用域窄（单子任务），设计上就是一个任务跑到销毁。如果子任务大到导致子 Agent 上下文溢出——那是编排拆得不够细，问题出在 ao compose 的任务拆分上。中间检查点已提供兜底。不搞子级反思、不拆分重开——子 Agent 脏数据隔离，别往它的短生命周期里塞复杂逻辑。
 
 <a id="worktree-isolation"></a>
 ### 子 Agent 并行时的文件隔离：为什么是 git worktree
@@ -310,13 +319,11 @@ sofagent 的 A/B 测试不是「跑两次选更好的」——是 4 步渐进沉
 
 ### 复盘体系（[Developer §五](./DEVELOPMENT.md#五自进化机制)）
 
-最早的 sofagent 只有六维评分：编排准确性、Skill 匹配度、模型经济性、执行流畅度、结果完整性、复用潜力。第七个维度「流程合规」是后来加上的——不是碰巧答对，是真的走了你要的流程。第八个维度「Loop 有效性」是 v4.5 加的——检查点到底帮上忙了还是只在浪费注意力。
-
-触发点是 Loop Agent 引入后产生的新问题：检查点本身也需要被评估。如果检查点连续误报（把正常的当问题），分数高但注意力浪费了。如果检查点漏掉了真问题，分数低但用户没感知。所以加了第八维：不是设了检查点就算有 Loop——是真起作用了。
+最早的 sofagent 只有六维评分。第七个维度「流程合规」是后来加上的——不是碰巧答对，是真的走了你要的流程。第八个维度「Loop 有效性」是 v4.5 加的——检查点到底帮上忙了还是只在浪费注意力。
 
 sofagent 的 Loop Agent（闭环模式对标 skill-iterate）的复盘体系——执行和治理分离，Loop Agent 在 closure 模式下作为独立角色做复盘评估。区别在于 sofagent 不跑 RL 训练，而是靠独立角色 + 复盘 + 冷启动保护来做决策——没那么精确，但零训练成本。
 
-还有一个隐含维度 sofagent 没有纳入评分体系，但值得记录：**设计意图达成度**——Skill 的 `description` 和入口是不是写错了。Anthropic 内部用 Skill 触发量统计工具分析后发现一个反直觉现象：触发量低常常不是需求少，而是 `description` 描述有误、入口设计有 bug、或该 Skill 从未真正接入工作流。sofagent 的 `skill-iterate` 目前只做正向评分（用了几次、打了几分），不做反向校验（为什么一直没人用）。**可以在 `skill-iterate` 里补一条：Skill 连续 30 天零触发且社区评分 < 4.0 → 主动提醒用户审查 `description` 和入口设计。** 这与第 7 维"流程合规"是同源思路——不是只看做了多少次，也要看为什么没被用过。
+还有一个隐含维度值得记录：**设计意图达成度**——Skill 的 `description` 和入口是不是写错了。Anthropic 内部发现触发量低常常不是需求少，而是 `description` 描述有误。sofagent 的 `skill-iterate` 目前只做正向评分（用了几次、打了几分），不做反向校验。**可补一条：Skill 连续 30 天零触发且评分 < 4.0 → 主动提醒审查 `description`。**
 
 ### LLM 复盘的信任边界（[Developer §五](./DEVELOPMENT.md#五自进化机制)）
 
@@ -390,7 +397,7 @@ Agent 治理层最核心的数据是 task/logs——每次任务跑完后一小�
 
 额外好处：文件系统天然支持 Git。`git diff task/logs/` 看变化，`git log task/logs/` 追溯决策时间。
 
-这套设计参考了生产级 Agent Memory 架构中的 **Lager-Views-Policy 三件套**（原始记录→提炼视图→筛选策略的三层架构）：task/logs 就是 Lager（原始账本，只追加不修改），think.md 反思区就是 Views（提炼视图），权重门禁和归档规则就是 Policy（控制策略）。三个层次各司其职——原始数据→提炼视图→策略筛选，每一步都可审计、可回退。
+这套设计参考了生产级 Agent Memory 架构中的 **Ledger-Views-Policy 三件套**（原始记录→提炼视图→筛选策略的三层架构）：task/logs 就是 Ledger（原始账本，只追加不修改），think.md 反思区就是 Views（提炼视图），权重门禁和归档规则就是 Policy（控制策略）。三个层次各司其职——原始数据→提炼视图→策略筛选，每一步都可审计、可回退。
 
 <a id="tree-loading"></a>
 ### 树形加载：为什么是树而不是平铺
@@ -406,169 +413,61 @@ Agent 治理层最核心的数据是 task/logs——每次任务跑完后一小�
 ---
 
 <a id="known-limits"></a>
+
 ## 三、诚实坦白：已知局限
 
-### 治理层自身在上下文里
-
-sofagent 的核心机制是 MD 文件注入 Agent 上下文。这意味着：
-
-- **约束力 = Agent 的注意力 × 平台的加载可靠性**
-- 如果 Agent 上下文窗口太小，约束可能被截断
-- 如果 Agent 选择性忽略长文本（Lost in the Middle），中间的铁律可能漏掉
-- 约束机制依赖被约束对象的配合——Agent 必须"愿意读"这些文件
-
-我们选择了这个代价，因为它换来了：**零外部依赖、零进程管理、跨平台兼容、纯文本可审计**。不用装 daemon，不用跑外部服务，不用维护二进制。约束文件就是约束——谁都能打开看、谁都能验证。
-
-这不是在吹"我们很好"，是在说"我们在哪些地方不够好，以及为什么不改"。
-
-### 加载链步进脆弱性（v0.60→v0.62 验证结论）
-
-**三层加载链在非 OpenClaw 平台上不可靠。** Agent 声称"跑了 sofagent"，实际可能只读了 1/3（宪法层被跳过）。
-
-v0.62 的扁平化重构将宪法内联进 SKILL.md——第 1 层不再依赖 Agent Read，所有平台强制生效。但第 2、3 层（think.md + rules.md）仍靠 Agent 自觉，在 WorkBuddy / Claude Code / Codex / Hermes 上存在"Agent 优先执行用户任务、跳过加载链"的行为。
-
-实测数据：两轮 WorkBuddy 新会话测试，加载链命中率分别为 1/3 和 0/3。OpenClaw 侧通过 `load-chain.sh` Hook 注入第 2、3 层，无此问题。
-
-**用户侧缓解**：在复杂任务前加 `@skill:sofagent` 作为显式锚点，可提高 Agent 注意到约束的概率——但非强制保证。详见 HANDBOOK。根治需等各平台支持类似 Hook 机制。
-
-### 复盘评分是 LLM 自评：评审者与执行者不分离
-
-闭环复盘的本质是让执行任务的同一个 Agent 对自己打分——评估者和被评估者是同一个人。上海 AI Lab 的 Self Harness 论文给出了方向性证据：**Agent 可以提议修改，但不能自己批准**。一旦自评，Agent 会收敛于「让验证变容易」而非「让结果变好」。
-
-v0.62.2 起按平台分级处理，v0.63 进一步诚实化：
-
-| 平台 | 实现方式 | 隔离级别 |
-|------|------|------|
-| OpenClaw | `session.spawn` 创建独立子 Agent，只传 task/logs 不传执行上下文 | 工程隔离，可类比引用 Self Harness 的方向性结论 |
-| 非 OpenClaw | 主 Agent 重新 Read task/logs 作为评审主依据，执行记忆作辅助参考 | prompt 级约束，无机制保障，效果未实测——Agent 仍可能凭执行记忆污染评审 |
-
-细节见 `loop-check.md` closure 模式。非 OpenClaw 路径不引用 Self Harness 的具体百分比数字——它没有工程隔离，引用会误导。
-
-### 定时触发做不到
-
-Loop Engineering 的标志性场景是「每天早上 8 点自动扫 CI」。sofagent 目前只有「每次对话启动」这一种触发方式。OpenClaw 不支持 cron 级定时任务。
-
-短期替代：Agent 任务闭环后自查 task/logs，上次执行某周期性任务已超过阈值时主动提醒用户。但不是真正的定时循环——依赖用户回应。
-
-**等什么**：OpenClaw 或 WorkBuddy 支持 schedule/cron 触发。
-
-### B1 数据初始化依赖 bash
-
-SKILL.md B1 步用 bash heredoc 创建 `.sofagent/` 数据目录和核心文件。OpenClaw / WorkBuddy / macOS/Linux 默认有 bash，但 Windows 或受限沙盒环境可能没有。
-
-降级路径已内置：bash 不可用时，Agent 降级为逐条 `mkdir` + 逐文件 Write 工具创建（SKILL.md B1 已标注）。需要 Agent 自觉识别平台并切换路径——没有 Hook 级硬切换。
-
-### 中间检查点挂起
-
-中间检查点设计：子 Agent 超标 → 暂停 → 主 Agent 三问评估（继续/停止/回滚）。「暂停」需要 OpenClaw `before_tool` Hook 拦截工具调用，当前不支持。
-
-现阶段靠 `tools.loopDetection` 兜底——能检测死循环并硬停止，做不到「暂停→三问→继续」的精细控制。
-
-防御体系设计参考了 Agent 死循环防御的**三层过滤网**模型：物理红线（步数限制→`globalCircuitBreakerThreshold`）→ 逻辑感知（ATM 重复检测→`genericRepeat`/`pingPong`）→ 人工兜底（任务挂起→中间检查点）。三层不是相互替代，是逐级兜底。
-
-**等什么**：OpenClaw `before_tool` Hook。
-
-> 📊 这个防护体系不是过度设计。Writer 2026 年初调查显示：35% 的公司无法有效关停失控的 Agent。sofagent 的三层过滤网（物理红线→逻辑感知→人工兜底）每层都对应一种实际失控场景。
-
-> 📊 同一调查暴露了更深的矛盾：97% 高管称已部署 AI Agent，实际回报率仅 29%。不是模型不够好——预算和工具都很充足——是「上线之后的持续治理」缺失。sofagent 要解决的不是「怎么用 AI」，是「用了 AI 之后谁来管、怎么管」。
-
-### Skill 级动态 Hook 做不到
-
-Anthropic 内部 Skill 支持按需注册动态安全护栏——比如生产环境操作前临时注册危险命令拦截器（`carfoo` 类 Hook），调试时限制文件修改范围（`freeze` 只允许改特定目录）。本质是让 Skill 不仅指导模型「怎么做」，还能在执行过程中**动态添加安全护栏**。
-
-sofagent 目前没有这个能力：Hook 是 OpenClaw 配置层的静态设置，Skill 运行时无法动态注册。现阶段 Skill 的安全约束只能靠静态 rules.md + OpenClaw `tools.loopDetection` 兜底。
-
-**等什么**：OpenClaw 支持 Skill 级动态 Hook，或者 sofagent 在 Skill 入口分发器层面实现自己的沙盒层。
-
-### 不是分布式系统
-
-sofagent 跑在单个 Agent 里——没有 agent-to-agent 通信，没有多实例协调，没有分布式状态管理。子 Agent 是 OpenClaw 的 session 隔离，不是真正的独立 Agent 进程。
-
-需要 10 个 Agent 并行协作、共享状态、相互通信的场景——不适合。
-
-### 不是多用户系统
-
-sofagent 跑在单个 Agent 里，.sofagent/ 是单用户工作目录。如果多用户共享同一 .sofagent/（比如团队共享仓库），一个人的错误反思会通过 think.md 污染所有人的判断。这不是 bug——是单 Agent 设计和多用户使用之间的天然冲突。
-
-多用户场景建议：每人独立 .sofagent/（每人独立工作目录），或等 v0.7x 的多用户方案。
-
-### 数据明文存储
-
-task/logs 和 think.md 以明文 Markdown 存储任务记录和反思摘要，可能含代码片段、API 响应、用户对话摘要。LLM 提炼反思时可能无意写入敏感信息。当前无加密、无脱敏、无数据保留策略。企业环境使用前需评估数据合规风险，或等待 v0.7x 企业级方案（见 Roadmap）。
-
-### Skill 层 Slop：经验漂移
-
-软层（scoring.md + think.md）在循环中持续自我修订，会引入一个隐蔽风险：**经验漂移**。某次任务偶然成功（比如网络抖动恰好恢复），Agent 可能把「先重启再部署」当成成功经验写进 think.md。这种迷信仪式不会立刻坏事，但会缓慢漂移——三个月后经验库里一半是不可复现的噪声。
-
-sofagent 的应对：think.md 的置信度渐进（0.3→0.5→0.7）和 30 天无触发衰减，本身就是对迷信仪式的过滤器——靠单次巧合涨不到高置信度。但更根本的解法是定期审计——翻 task/logs 对照 think.md 的反思来源，把偶然成功标记剔除。这是人要做的事，自动化做不到。
-
-### 平台依赖
-
-核心约束（SKILL.md（宪法内联）/ rules.md）是纯 Markdown，任何能读文件的平台都能加载。但自动触发、Skill 加载、脚本执行——取决于平台。install.sh 已做平台抽象（`--platform` 参数），自动探测并适配部署目标。
-
-| 能力 | OpenClaw | WorkBuddy | Claude Code | Codex | Hermes |
-|------|:--:|:--:|:--:|:--:|:--:|
-| 核心约束 | ✅ Hook注入 | ✅ SKILL加载 | ⚠️ 种子指令 | ⚠️ 种子指令 | ⚠️ 种子指令 |
-| Skill 自启 | ✅ | ✅ | ❌ | ❌ | ❌ |
-| 加载链脚本 | ✅ load-chain.sh Hook | ❌ 无Hook，C步Read替代 | ❌ | ❌ | ❌ |
-| 断路器 | ✅ loopDetection | ❌ 平台自有 | ❌ | ❌ | ❌ |
-| 脚本执行 | ✅ | ⚠️ bash可用 | ✅ | ✅ | ✅ |
-| 定时触发 | ❌ | ❌ | ❌ | ❌ | ❌ |
-| install.sh | ✅ 完整部署 | ✅ 自动跳过 | ⚠️ 仅宪法+种子 | ⚠️ 仅宪法+种子 | ⚠️ 仅宪法+种子 |
-
-> 💡 加载链跨平台说明（v0.62.1 扁平化 + 防御性冗余）：
-> - **第 1 层（SKILL.md 含宪法）**：所有平台由 skill 系统自动注入，强制生效。OpenClaw 额外由 load-chain.sh 兜底注入（防御性冗余，~250 token 可接受）
-> - **第 2、3 层（think.md + rules.md）**：OpenClaw 由 load-chain.sh Hook 注入；其他平台由 Agent 主动 Read
+> 本节已独立为 **[LIMITATIONS.md](./LIMITATIONS.md)**——17 条已知局限、每条的「等什么」条件、平台分级能力表，全部在那里。
 >
-> 概念（三层约束按序注入）跨平台通用，机制（skill 注入 + Hook 兜底 vs 纯 skill 注入 + Agent Read）按平台分级。第 1 层全平台强制，第 2、3 层 OpenClaw 强制、其他平台君子协定。
+> 这里只留摘要，方便你判断要不要点过去看全文：
 
-### 软层闭合清单的执行率不是 100%
+| 局限 | 一句话 | 等什么 |
+|------|------|------|
+| 治理层自身在上下文里 | 约束力 = Agent 注意力 × 平台加载可靠性 | 架构宿命，不可解 |
+| [加载链步进脆弱性](./LIMITATIONS.md#加载链步进脆弱性v060v062-验证结论) | 非 OpenClaw 平台 Agent 可能跳过加载链 | 各平台支持 Hook 机制 |
+| [复盘评分是 LLM 自评](./LIMITATIONS.md#复盘评分是-llm-自评评审者与执行者不分离) | 非 OpenClaw 平台评审者与执行者不分离 | v0.9 外部评估器 |
+| Skill 自进化处于经验记录阶段 | 单次轨迹不可靠，会把噪声写成规则 | v0.9 验证门控 + v1.x 外部评估器 |
+| 定时触发做不到 | 只有「每次对话启动」一种触发方式 | 平台支持 cron |
+| B1 初始化依赖 bash | Windows / 受限沙盒可能没有 bash | Agent 自觉降级，无硬切换 |
+| 中间检查点挂起 | 「暂停」需要 before_tool Hook | OpenClaw before_tool Hook |
+| Skill 级动态 Hook 做不到 | Skill 运行时无法注册安全护栏 | OpenClaw 支持动态 Hook |
+| 不是分布式系统 | 没有 agent-to-agent 通信 | v2.x router |
+| 不是多用户系统 | 共享 .sofagent/ 会交叉污染经验 | v0.9 多用户隔离 |
+| 数据明文存储 | task/logs / think.md 无加密 | v0.9 age 加密 |
+| Skill 层 Slop（经验漂移） | 偶然成功会被当成经验 | 人工定期审计 |
+| [平台依赖](./LIMITATIONS.md#平台依赖) | 自动触发 / Skill 加载 / 脚本执行因平台而异 | 各平台能力对齐 |
+| 软层闭合清单执行率 ≠ 100% | Agent 可能跳过闸门检查 | 软层治理宿命，人工审计兜底 |
+| [核心效果缺持续数据](./LIMITATIONS.md#核心效果未实测) | 11 Case 全是一次性测试，无持续使用 / A/B 对照 | 社区补持续使用 + A/B |
 
-SKILL.md 的回复前闸门（⓪①②）和闭合清单（②→③→④→⑤→⑥）由 Agent 自觉执行——没有 Hook 级的硬拦截。在连续快速操作（如多文件批量修改）中，Agent 注意力可能跳过检查。
-
-这不是设计缺陷，是软层治理的宿命：硬层管底线，软层（scoring.md + think.md + orchestrator）靠循环进化，但不能指望 100% 执行率。应对：
-- **硬层兜底**：rules.md 中写一条「回复前必过闸门」的硬约束，利用 rules.md 在三层加载链中优先级最高的特性增加执行概率
-- **结构加固**：将闸门从 §一 末尾提到入口流程 D 之后，增加 `⛔ 硬出口` 节（见 SKILL.md），利用 Lost in the Middle 效应——越靠前的指令 Agent 越不容易漏。v4.5 进一步拆为主 Skill + 五个子 Skill（engine/entry-gate/task-aware/task-closure/loop-check），每个 ≤90 行，Agent 不再迷路
-- **人工审计**：定期翻 task/logs 检查闭合清单是否每次都被执行——这和 Skill 层 Slop 审计是同一个人工兜底策略
-
-> 💡 **设计妥协：MD 强约束对标 Hook 机制**。sofagent 的三层闸门在概念上对标 Cloud/Agent 的 Hook 机制——回复前闸门 ⓪ = pre-tool-use（工具调用前检查），task-closure ②→⑤ = post-tool-use（任务结束后自动沉淀），闭环信号 = stop event（任务完成触发）。但受限于跨五平台兼容性（WorkBuddy/Claude Code/Codex/Hermes 不支持 Shell 级 Hook 拦截），这些只能通过 MD 强约束 + ⛔ 硬出口 + 兜底检查来模拟 Hook 行为。只有 OpenClaw 平台通过 `load-chain.sh` 实现了真正的 Hook 级硬拦截。
-
-### 核心效果未实测
-
-本项目核心宣称（越用越聪明、纪律性提升）尚无第三方实测数据。docs/EVIDENCE.md 和 docs/TESTING.md 均为空白占位，待社区填写。作者不自行宣称效果数字。
-
-### 安装脚本历史问题
-
-v0.47 及之前版本的 install.sh 存在文件复制不全问题（OpenClaw 路径仅复制 2/6 个 Skill 文件，WorkBuddy 路径为 no-op）。v0.48 已修复。
-
-### 反思自评的自噬风险
-
-LLM 自评 → 写入 think.md → 下次加载 → 影响判断——这个闭环如果没有外部校验，不准的自评会自我强化（Harbor 2025 综述称"自噬效应"）。sofagent 的应对：反思写入时标记来源（[LLM自评] / [已验证] / [用户确认]），加载时 [LLM自评] 权重 ×0.5；同时用 3 问模板（做对了什么 / 做错了什么 / 下次改什么）替代自由文本，让反思结构化可比对。这不是根治——根治需要外部评估系统（如 coze-loop 的评估器+评估集架构），但标记+模板+折半是缓冲层。
-
-### Loop Agent 不是独立进程
-
-Loop Agent 不是独立进程或独立模型调用——它是主 Agent 在特定节点切换 prompt 以顾问身份输出建议。文档中"独立复盘"指角色隔离（执行者不自评），不是工程隔离（独立进程/独立模型实例）。
-
-### ao compose 依赖 npm 全局安装
-
-`ao compose` 依赖 npm 全局安装的 `agency-orchestrator` 包——不是纯 bash 环境。OpenClaw / macOS / Linux 默认带 Node.js，但受限沙箱或纯容器环境可能需要额外安装 Node.js ≥18 + npm ≥9。install.sh 不会自动装 Node——需要用户自行确保 npm 可用。
-
-### 折半机制跨平台生效差异
-
-load-chain.sh 的 `[LLM自评]` 标记位折半（权重 ×0.5）只在 OpenClaw 平台物理生效——通过 `before_prompt_build` Hook 在注入 think.md 时动态追加降权提示。WorkBuddy / Claude Code / Codex / Hermes 没有 load-chain.sh Hook，折半机制靠 SKILL.md C 步 Read think.md 后 Agent 自觉识别 `[LLM自评]` 标记——与上文「反思自评的自噬风险」「复盘评分是 LLM 自评」同一局限。v1.x 引入外部评估器时统一解决。不假装 WorkBuddy 也有脚本级折半。
-
-> 💡 **如果你不同意某个决策**：以上局限中，可通过 `rules.md` 覆盖的有——编排深度晋级阈值、活跃区 token 上限、复盘权重。需等待平台演进的有——定时触发（等 OpenClaw cron）、中间检查点挂起（等 `before_tool` Hook）。其余的（非分布式、Skill 层 Slop、LLM 评估偏差、软层执行率）是架构宿命，不是配置问题。
+> 💡 其他文档引用已知局限时，统一指向 `LIMITATIONS.md` 对应锚点，不在各自文档里重复摘抄——改一处，全局生效。
 
 ---
 
-## 四、参考与致谢
+## 五、行业研究启发与未来方向
+
+> 以下方向来自 2026-06-20 行业研究笔记的学习总结，仅供后续版本设计参考。
+
+本节内容（Loop Engineering 三道闸门对照、记忆系统三套规则、循环工程核心公式、存储策略对照等 ~200 行研究笔记）已拆分到独立文档：
+
+**→ [docs/research/industry-insights.md](./docs/research/industry-insights.md)**
+
+**核心方向速览**（详见独立文档）：
+- **v0.8**：防雪崩说明 / Diagnosing Box 四维度排查 / 检查点定义 / daemon 定位升级（session 外触发器）
+- **v0.9**：rules.md 升级为 Agent 运行规范 / 权限边界字段 / think.md 多重置信度标记 / 记忆系统三套规则
+- **v1.x**：Skill 自进化验证门控（A/B 对比 + 外部评估器）
+- **v2.x**：三种协作模式（主管/流水线/委员会）/ 信号共享网络
+
+**两个原则性警告**（贯穿所有版本）：①「不要让智能体自我验证」——根治需 v1.x 外部评估器；②「Agent 越强，闸门越重要」——不可因模型能力提升而拆除控制机制。
+
+---
+
+## 六、参考与致谢
 
 sofagent 站在这些人和作品的基础上：
 
 | 来源 | 启发 | 链接 |
 |------|------|------|
 | **OpenClaw** | 运行平台——加载链、Hook、Skill 系统、session 隔离 | [github.com/openclaw/openclaw](https://github.com/openclaw/openclaw) |
-| **DeepSeek** | 模型引擎——本项目所有文件由 DeepSeek V4 Pro 辅助生成 | [deepseek.com](https://deepseek.com) |
+| **DeepSeek + GLM** | 模型引擎——本项目所有文件由 DeepSeek V4 Pro 和 GLM-5.2 配合生成 | [deepseek.com](https://deepseek.com) · [z.ai](https://z.ai) |
 | **Addy Osmani** | Loop Engineering 五大件架构、语义化停止条件、三盆冷水 | [Loop Engineering 原文](https://addyo.substack.com/p/loop-engineering) |
 | **Anthropic** | Managed Agents 四层架构（解耦脑和手、disposable worker、Agent≠Session、Loop>Prompt）——sofagent 核心设计哲学的源头 | [Scaling Managed Agents](https://www.anthropic.com/engineering/managed-agents) |
 | **Codex / Claude Code** | 五层上下文压缩策略、决策冻结、增量笔记 | [codex.ai](https://codex.ai) |
@@ -579,6 +478,9 @@ sofagent 站在这些人和作品的基础上：
 | **Google Skill 模式** | Tool Wrapper / Generator / Reviewer / Inversion / Pipeline 五种设计模式——Reviewer/Inversion/Pipeline 与 sofagent 铁律 #3「验证再继续」、task-aware 复杂度分级、ao compose 确认 Gate 形成映射 | [Google Cloud Tech](https://x.com/GoogleCloudTech/article/2033953579824758855) |
 | **Andrej Karpathy** | 思考先行、简约至上、精准修改、目标驱动——铁律在此基础上扩展 | [4 条编码原则](https://github.com/multica-ai/andrej-karpathy-skills) |
 | **Nelson F. Liu et al.** | *Lost in the Middle*（2023）——LLM 对长上下文中间段注意力衰减的研究，500 字原则和加载链顺序的科学依据 | [arXiv 2307.03172](https://arxiv.org/abs/2307.03172) |
+| **Matt Pocock** | 调试方法论——输入/环境/工具/模型四维度系统性排查（Diagnosing Box），loop-check 验收闸的排查框架 | [github.com/mattpocock/skills](https://github.com/mattpocock/skills) |
+| **徐远哲 · Ledger-Views-Policy 三件套** | Agent Memory 架构最小形态：Raw Ledger（权威账本）+ Derived Views（派生视图）+ Policy（控制策略）——sofagent 记忆架构（task/logs + think.md + 权重门禁）的理论参照 | [Agent Memory 架构思考](https://xuyuanzhe.github.io/blog/2026/agent-memory-architecture/) |
+| **Microsoft Research · SkillOpt** | 把 Skill 文档当模型「外部状态」训练的方法论——rollout → reflect → edit → gate 四步循环。文本学习率 + Held-out Gate + 拒绝缓冲区三原则启发 sofagent v0.9 Skill 自进化（纯 MD + scoring 实现，不引入代码依赖） | [SkillOpt 论文](https://arxiv.org/abs/2605.06614) |
 
 ---
 

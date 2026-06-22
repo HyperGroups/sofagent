@@ -1,8 +1,8 @@
 # rules.md · 执行层
 
-> 本文件由 DeepSeek V4 Pro 辅助生成，欢迎改进。
+> 本文件由 DeepSeek V4 Pro 和 GLM-5.2 配合生成，欢迎改进。
 >
-> 加载链第 3 层（最后一层）。优先级最高——你的规则说了算，可以覆盖前面所有层。
+> 加载链第 3 层（最后一层）。优先级最高——你的运行规范说了算，可以覆盖前面所有层。
 > 不用全部填，挑你需要的写进去就行。写了就生效，删了就取消。
 
 ---
@@ -56,3 +56,22 @@
 ## 离线模式（企业环境可选）
 # 取消下面这行的注释启用离线模式——跳过 ClawHub API 调用
 # offline: true
+
+---
+
+## 企业合规（v0.7x，可选）
+
+<!-- 去掉对应行 # 启用。所有功能默认关闭，不影响现有用户。 -->
+
+# 日志脱敏：写入 task/logs 前自动打码 API Key / token / 密码
+# log_sanitize: true
+# log_sanitize_ips: false
+
+# 数据保留：超过保留天数或条数上限自动清理。清理前先 tar.gz 归档。
+# data_retention_days: 90
+# data_retention_max_entries: 500
+# data_cleanup_on_record: true
+# data_cleanup_frequency: 10
+
+# 审计日志：记录关键操作（install / uninstall / orchestrate / cleanup）
+# audit_enabled: true

@@ -1,10 +1,10 @@
 # sofagent Handbook
 
-> 从 Context Engineering 到 Harness Engineering 再到 Loop Engineering——
-> 一个完全不懂代码的人，给 OpenClaw 写的 Agent 治理手册。
 > **为 AI Agent 提供纪律层与反思循环：4 条底线 + 10 则铁律约束行为，复杂任务自动拆解执行，每次跑完自动复盘。**
 >
-> v0.63 · 2026-06-19 · 孔放勋
+> 从 Context Engineering 到 Harness Engineering 再到 Loop Engineering。
+>
+> v0.82 · 2026-06-21 · 孔放勋
 
 <img src="images/sofagent.png" alt="sofagent" width="300" />
 
@@ -27,8 +27,8 @@
 | 你是谁 | 先读这几章 | 为什么 |
 |------|------|------|
 | 普通用户 | 速览 → §一 → §五 → §六 | 先理解核心，装完用，遇到问题查 FAQ |
-| 想理解内部机制 | [Developer](./DEVELOPMENT.md) | Skill 结构、编排、反思、数据架构 |
-| 想理解设计哲学 | [Design](./ARCHITECTURE.md) | 为什么这么设计、已知局限 |
+| 想理解内部机制 | [开发文档](./DEVELOPMENT.md) | Skill 结构、编排、反思、数据架构 |
+| 想理解设计哲学 | [设计文档](./ARCHITECTURE.md) | 为什么这么设计、已知局限 |
 | 想装上试 | §五 → §二 → §三 → §六 | 装完就跑，遇到问题回来查 |
 
 ---
@@ -43,7 +43,7 @@
 
 这不是什么「框架」或「方法论」，只是用大半年 OpenClaw 攒的笔记。第一次用 GitHub、第一次往上面放东西——格式不对、规矩不周的地方，多包涵。
 
-这个项目里的文件都是 DeepSeek V4 Pro 辅助生成的。写得不好的地方很多——分享出来就是期待你也参与进来一起优化。
+这个项目里的文件都是 DeepSeek V4 Pro 和 GLM-5.2 配合生成的。写得不好的地方很多——分享出来就是期待你也参与进来一起优化。
 
 如果你也在折腾 OpenClaw，希望这个对你有用。
 
@@ -57,7 +57,7 @@
 | 怎么装 | `bash sofagent/scripts/install.sh --platform 你的平台` | §五 |
 | 怎么用 | 装完直接派任务，🔴 复杂任务 Agent 自动拆解，🟢🟡 直接干 | §四 |
 | 适用场景 | 需要纪律和反思循环的日常 Agent 使用 | §四能力边界 |
-| 已知局限 | 核心效果待社区验证；复盘是 LLM 自评；Loop Agent 非独立进程；数据明文存储；不是多用户系统 | Design §三 |
+| 已知局限 | 核心效果待社区验证；复盘是 LLM 自评；Loop Agent 非独立进程；数据明文存储；不是多用户系统 | [LIMITATIONS.md](./LIMITATIONS.md) |
 
 ---
 
@@ -85,7 +85,7 @@ sofagent 的策略就八个字：**厚在治理，薄在复用。**
 - 你自己的 rules.md 也建议 500 字以内——写多了 Agent 反而记不住
 - 岗位模板保留索引卡片（≤200 字符），完整实现按需加载
 
-写得多不如写得对。注意区分三个不同级别的长度约束：加载文档 ≤500 字（§一）、Skill 索引卡片 ≤500 字符（[Developer §三](./DEVELOPMENT.md#三模型最优选择)）、岗位模板卡片 ≤200 字符（§二）——三条线各管各的，别搞混。
+写得多不如写得对。注意区分三个不同级别的长度约束：加载文档 ≤500 字（§一）、Skill 索引卡片 ≤500 字符（[开发文档 §三](./DEVELOPMENT.md#三模型最优选择)）、岗位模板卡片 ≤200 字符（§二）——三条线各管各的，别搞混。
 
 > 💡 先立规范，再开循环。`SKILL.md`（宪法内联）（契约层）是 Loop 跑起来的护栏——不保证不出错，但保证出了错你知道为什么。
 
@@ -101,7 +101,7 @@ sofagent 每次对话启动时，先加载 3 个文件作为常驻地基——�
 |:--:|------|------|:--:|
 | 1 | `SKILL.md`（宪法内联） | 契约层：4 条底线 + 10 则行为铁律 | ❌ 千万不要改 |
 | 2 | `think.md` | 反思层：反思区（日摘要，≤2K token） | ⚠️ 改了没用 |
-| 3 | `rules.md` | 执行层：你的自定义规则，优先级最高 | ✅ 随便改 |
+| 3 | `rules.md` | 执行层：你的运行规范，优先级最高 | ✅ 随便改 |
 
 `rules.md` 最后加载，优先级最高——你的规则说了算。写什么？比如「不要生成 markdown 文件」「回复控制在 200 字以内」「优先用中文」，写了就生效。底线和铁律的详细内容见 [下一章](#三底线与铁律)。
 
@@ -109,11 +109,11 @@ sofagent 每次对话启动时，先加载 3 个文件作为常驻地基——�
 
 加载链如果只在复杂任务时激活，后果很清楚——think.md 反思区不在则 Agent 重复犯错，rules.md 不在则用户偏好失效。完整推理见 [ARCHITECTURE.md](./ARCHITECTURE.md#why-resident)。
 
-> 📎 orchestrator/ 不参与初始加载——由 SKILL.md 判断任务需要编排时按需触发。三层约束注入由 `load-chain.sh`（OpenClaw Hook）执行，带 SHA-256 缓存检测。
+> 📎 orchestrator/ 不参与初始加载——由 SKILL.md 判断任务需要编排时按需触发。三层约束注入：第 1 层由 skill 系统自动注入；第 2、3 层在 OpenClaw 上由内部 hook `sofagent-load-chain`（agent:bootstrap 事件）注入，其他平台由 Agent 主动 Read。
 
 ### 编排触发（engine.md + orchestrator/）——🔁 按需点火
 
-地基完成后，SKILL.md 判断任务复杂度。🟢🟡 简单任务不走编排引擎，🔴 复杂任务才点火 engine.md（任务编排引擎）拆解→执行→闭环。编排决策沉淀到 `orchestrator/_index.md`，Agent 自己维护。详见 [Developer §五](./DEVELOPMENT.md#五自进化机制)。
+地基完成后，SKILL.md 判断任务复杂度。🟢🟡 简单任务不走编排引擎，🔴 复杂任务才点火 engine.md（任务编排引擎）拆解→执行→闭环。编排决策沉淀到 `orchestrator/_index.md`，Agent 自己维护。详见 [开发文档 §五](./DEVELOPMENT.md#五自进化机制)。
 
 ### Token 预算参考
 
@@ -122,7 +122,6 @@ sofagent 每次对话启动时，先加载 3 个文件作为常驻地基——�
 | SKILL.md（4底线+10铁律，宪法内联） | ~250 |
 | think.md（反思区） | ≤2,000 |
 | rules.md | ~200 |
-| SKILL.md | ~300 |
 | 编排引擎（engine.md，仅 🔴 复杂任务） | ~400（回归）–800（首次） |
 | 子 Skill（4 个，按需加载） | ~1,500–2,500 |
 | 岗位模板（ao compose 时注入，每个子 Agent 1 份） | ~1,500–3,000/个 |
@@ -192,7 +191,7 @@ sofagent 就是一个在电脑前干活的人——能通过文字输入输出�
 
 > 💡 代码相关能力需要 shell/bash 平台支持（macOS/Linux）。纯 Web 版 Agent 可能无法执行脚本或文件操作。
 
-每项任务能否完成由模型能力、工具权限、已安装的 Skills（[Developer §三](./DEVELOPMENT.md#三模型最优选择)）共同决定——新装一个 Skill 可能扩展边界，比如装了图像生成的 Skill，就能生成新图片（但不能编辑已有图片）。
+每项任务能否完成由模型能力、工具权限、已安装的 Skills（[开发文档 §三](./DEVELOPMENT.md#三模型最优选择)）共同决定——新装一个 Skill 可能扩展边界，比如装了图像生成的 Skill，就能生成新图片（但不能编辑已有图片）。
 
 如果用户的任务超出边界——**直接说「这个我做不了」，不给虚假希望。** 但给替代方向：「视频剪不了，不过我可以帮你整理素材清单、写分镜脚本、或者搜剪辑教程。」拒绝 + 替代方案，比假装能做到更有用。
 
@@ -298,9 +297,9 @@ bash sofagent/scripts/install.sh --platform {你的平台}
 | 平台 | 自动注入文件 | Agent 能写吗 | 方式 |
 |------|------|:--:|------|
 | WorkBuddy / OpenClaw | `MEMORY.md` | ✅ | Agent 首次初始化时自动写入种子指令 |
-| Claude Code / Codex / Hermes | `CLAUDE.md` / `AGENTS.md` / `SOUL.md` | ❌ | **你**手动在文件末尾贴一行种子指令 |
+| Codex / Hermes Agent / Claude Code | `AGENTS.md` / `SOUL.md` / `CLAUDE.md` | ❌ | **你**手动在文件末尾贴一行种子指令 |
 
-两条路终点一样——Agent 每轮都看到种子指令，读到就去加载 Skill。区别只是种子指令是谁写进去的。种子指令的具体内容和手动粘贴位置见 [Developer §一 脚本与文件结构速查](./DEVELOPMENT.md#脚本与文件结构速查)。
+两条路终点一样——Agent 每轮都看到种子指令，读到就去加载 Skill。区别只是种子指令是谁写进去的。种子指令的具体内容和手动粘贴位置见 [开发文档 §一 脚本与文件结构速查](./DEVELOPMENT.md#脚本与文件结构速查)。
 
 ### 跨平台能力差异
 
@@ -310,7 +309,7 @@ bash sofagent/scripts/install.sh --platform {你的平台}
 | WorkBuddy | 自动（Agent 写 MEMORY.md） | ✅ | ⚠️（沙箱受限） | Skill 自启，部分脚本不可用 |
 | Claude Code | 手动（你写 CLAUDE.md） | ❌ | ✅ | 一行指令兜底，脚本全支持 |
 | Codex | 手动（你写 AGENTS.md） | ❌ | ✅ | 同上 |
-| Hermes | 手动（你写 SOUL.md） | ❌ | ⚠️ | 同上 |
+| Hermes Agent | 手动（你写 SOUL.md） | ❌ | ⚠️ | 同上 |
 
 ### 非 OpenClaw 用户的 tips
 
@@ -322,7 +321,7 @@ OpenClaw 通过 Hook 强制注入宪法，Agent 无需额外操作即可完整�
 **复杂任务时建议**：任务前加 `@skill:sofagent` 作为显式锚点，提高 Agent 走完加载链的概率。
 这不是强制保证，但实测能帮助 Agent 对齐约束。
 
-> 💡 加载链步进可靠性是已知局限（详见 [ARCHITECTURE §三](./ARCHITECTURE.md#加载链步进脆弱性v060v062-验证结论)），等各平台支持类似 Hook 机制后会自然解决。
+> 💡 加载链步进可靠性是已知局限（详见 [LIMITATIONS.md](./LIMITATIONS.md#加载链步进脆弱性v060v062-验证结论)），等各平台支持类似 Hook 机制后会自然解决。
 
 ### 什么时候用，什么时候不用
 
@@ -349,7 +348,7 @@ OpenClaw 通过 Hook 强制注入宪法，Agent 无需额外操作即可完整�
 
 | 问题 | 怎么办 |
 |------|------|
-| Agent 不遵守铁律 | 检查文件位置；把最关键规则写到 rules.md |
+| Agent 不遵守铁律 | 检查文件位置；把最关键规则写到 rules.md。非 OpenClaw 平台（WorkBuddy / Codex / Hermes Agent / Claude Code）若 Skill 未自动加载，在对话中手动 `@skill:sofagent` 触发入口流程 |
 | think.md 出现错误记忆 | 直接编辑 think.md 删掉；对照 task/logs 核实 |
 | Skill 评分不准 | 手动改 scoring/ 评分；rules.md 加 `不自动淘汰 Skill` |
 | 编排结果不稳定 | 同类任务跑够 3 次用模板；没模板时少拆子任务、只用已验证 Skill |
@@ -357,7 +356,7 @@ OpenClaw 通过 Hook 强制注入宪法，Agent 无需额外操作即可完整�
 | 多个电脑上能用吗 | 不能——不是分布式，跑在单个 Agent 里 |
 | 评分越来越不准 | 经验漂移——翻 task/logs 对照 think.md，清理低置信度旧条目 |
 
-> 💡 更多细节见 [ARCHITECTURE.md](./ARCHITECTURE.md#known-limits)。
+> 💡 更多细节见 [LIMITATIONS.md](./LIMITATIONS.md#known-limits)。
 
 ### Osmani 三盆冷水（对用户的警告）
 
@@ -381,7 +380,8 @@ Addy Osmani 在 Loop Engineering 里泼了三盆冷水——不是 sofagent 的�
 ### 最早要谢的
 
 - **[OpenClaw](https://github.com/openclaw/openclaw)** by Peter Steinberger — 整个 sofagent 的基石。从上下文加载到 Hook 触发、从 Skill 注入到 Session 管理，整套体系都建立在 OpenClaw 的能力之上。没有 OpenClaw，这本 Handbook 一页都写不出来
-- **[DeepSeek V4 Pro](https://api-docs.deepseek.com/zh-cn/)** — 这本 Handbook 和所有 sofagent 文件都是用它辅助生成的。一个产品经理能做完这件事，全靠它
+- **[DeepSeek V4 Pro](https://api-docs.deepseek.com/zh-cn/)** — 这本 Handbook 和所有 sofagent 文件都是它与 GLM-5.2 配合生成的。一个产品经理能做完这件事，全靠它们
+- **[GLM-5.2](https://z.ai/)** — 配合 DeepSeek V4 Pro 完成代码生成、审查与测试
 
 ### GitHub 项目
 
@@ -405,7 +405,7 @@ Addy Osmani 在 Loop Engineering 里泼了三盆冷水——不是 sofagent 的�
 
 **One More Thing…**
 
-不想装 Skill？或者你的平台不支持？把下面这段 Prompt 直接扔给 Agent——它读完 Handbook 和 Developer 就会按规矩来。Handbook 讲怎么用，Developer 讲怎么跑。
+不想装 Skill？或者你的平台不支持？把下面这段 Prompt 直接扔给 Agent——它读完 Handbook 和开发文档就会按规矩来。Handbook 讲怎么用，开发文档讲怎么跑。
 
 ```
 请先完整阅读这份 HANDBOOK.md 和 DEVELOPMENT.md。
@@ -440,4 +440,4 @@ Addy Osmani 在 Loop Engineering 里泼了三盆冷水——不是 sofagent 的�
 
 > 大半年 OpenClaw 攒的笔记。不是实验室数据，但对我有用。哪里写得不好，直接告诉我。
 >
-> *v0.63，2026 年 6 月 19 日*
+> *v0.81，2026 年 6 月 21 日*

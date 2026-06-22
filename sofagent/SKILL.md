@@ -1,13 +1,13 @@
 ---
 name: sofagent
 slug: sofagent
-version: 0.63.0
+version: 0.82
 displayName: sofagent
 description: >
-  为你的 Agent 提供纪律约束与反思循环：三层加载链实现复杂任务自动拆解执行 + 每次跑完任务自动复盘总结。
+  当你的 Agent 反复偏离目标、任务越做越复杂、刚踩过的坑下次还踩 —— sofagent 能约束其行为、拆解复杂任务、从错误中沉淀教训。
 image: images/sofagent.png
-triggers: [复杂任务拆解, 多步任务, 代码修改, 文件操作, 任务反思, 任务闭环]
-scenarios: [需要纪律约束, 需要自动编排, 需要从失败中学习]
+triggers: [Agent行为失控, 任务复杂需要拆解, 多文件修改, 文件操作有风险, 上次任务出过问题, 需要确认任务已完成, 高风险任务前加约束]
+scenarios: [Agent开始自由发挥偏离目标, 任务包含不可逆操作需要守门员, 连续多个子任务需要编排协调, 刚踩过坑想避免重蹈覆辙, 想让Agent更守规矩]
 not_when: [简单闲聊, 单步查询, 纯信息检索]
 metadata:
   openclaw:
@@ -15,11 +15,11 @@ metadata:
       bins: [bash, mkdir]
 ---
 
-# SKILL.md · v0.63
+# SKILL.md · v0.82
 
 > ⚠️ **反向锚点**：本文件是加载链第 1 层，随 skill 调用自动注入——你无需 Read 就已有宪法。但第 2、3 层需你主动 Read。如果你没读 rules.md 和 think.md 就回复用户，你的输出可能偏离用户定制和历史教训。
 
-> **平台定位**：第 1 层所有平台强制生效（skill 机制保证）；第 2、3 层依赖 Agent 自觉 Read。OpenClaw 通过 load-chain.sh Hook 进一步强化后两层。
+> **平台定位**：第 1 层所有平台强制生效（skill 机制保证）；第 2、3 层依赖 Agent 自觉 Read。OpenClaw 通过内部 hook（`sofagent-load-chain`，agent:bootstrap 事件触发）进一步强化后两层。
 
 ---
 
@@ -31,9 +31,11 @@ metadata:
 |:--:|------|---------|------|------|
 | 1 | **本文件** | skill 调用自动注入 | 4 底线 + 10 铁律（契约层）| — |
 | 2 | `{SOFAGENT_DATA}/think.md` | Agent 主动 Read | 反思区（上次踩了什么坑）| 任务完成后创建 |
-| 3 | `constitution/rules.md` | Agent 主动 Read | 你的规则（最高优先级，可覆盖第 1 层）| 跳过（未配置）|
+| 3 | `~/.openclaw/skills/sofagent/rules.md` | Agent 主动 Read | 你的运行规范（最高优先级，可覆盖第 1 层）| 跳过（未配置）|
+> 💡 `~/.openclaw/rules.md` 留给用户自定义，sofagent 不再部署到此路径。|
 
 > 💡 `{SOFAGENT_DATA}` = `${PWD}/.sofagent`（当前工作目录下的 .sofagent/ 数据目录）。
+> 💡 `{OPENCLAW_SCRIPTS}` = 优先 `${HOME}/.openclaw/scripts/`；若不存在则 Agent 自行搜索 `sofagent/scripts/`（项目目录下的脚本）。
 > 第 1 层是宪法（不可变）、第 2 层是错题本、第 3 层是你说了算。
 
 ---
@@ -70,6 +72,22 @@ metadata:
 #10 如实汇报 — 不知道就说不知道
 
 > 每条铁律对应的翻车案例见 [Handbook §三](../HANDBOOK.md#三底线与铁律)。
+
+---
+
+## ⛓️ 加载链自检
+
+> 你的平台可能没有 Hook 自动注入后两层，所以 sofagent 帮你加了加载链提醒——首次使用时请确认 L2（think.md）和 L3（rules.md）是否都已读到。如果某层没读到，对话中会有提醒。
+
+每次对话开始时，Agent 内部检查：
+- L1 本文件（SKILL.md）— 当前 skill 调用已加载
+- L2 think.md（{SOFAGENT_DATA}/think.md）— 需主动 Read
+- L3 rules.md（~/.openclaw/skills/sofagent/rules.md 或等效路径）— 需主动 Read
+
+如发现 L2 或 L3 未加载，在回复开头简短提醒用户：
+「⚠️ 本次加载链第 X 层未加载，反思记忆/自定义规则不会生效。」
+
+> 💡 **daemon 通知**：如果 `.sofagent/daemon-notice.md` 存在，Read 它——里面是 daemon 检测到的文件变化提醒（think.md / rules.md 已更新）。
 
 ---
 

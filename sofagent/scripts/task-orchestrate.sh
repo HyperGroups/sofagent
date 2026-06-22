@@ -8,27 +8,71 @@
 #   3. 编排预览（先看 DAG 再决定跑不跑）
 #   4. 结果聚合 + 成本汇总
 #   5. 自动清理 worktree
-# 由 DeepSeek V4 Pro 辅助生成。
+# 由 DeepSeek V4 Pro 和 GLM-5.2 配合生成。
 #
 
 # 用法：
 #   task-orchestrate.sh "帮我分析一个功能的可行性"
 #   task-orchestrate.sh "重构用户模块" --dry-run
 #   task-orchestrate.sh --worktree "重构用户模块"
+#   task-orchestrate.sh "重构用户模块" --max-retries 5
+#   task-orchestrate.sh "重构用户模块" --model flash
 #   task-orchestrate.sh --help
 # ============================================================
 
-# ao 不可用时降级提示（不报错退出）
+# ao 不可用时自动切默认编排（不报错退出——口头告知 + 自动降级）
+DEFAULT_ORCHESTRATE() {
+  local task_desc="$1"
+  echo ""
+  echo "  ╔═══════════════════════════════════╗"
+  echo "  ║   sofagent · 默认编排（无 ao）    ║"
+  echo "  ╚═══════════════════════════════════╝"
+  echo ""
+  echo "  任务: ${task_desc}"
+  echo ""
+  echo "  建议手动拆为 3-5 个子任务："
+  echo "    1. 分析/准备 → developer"
+  echo "    2. 核心实现 → developer"
+  echo "    3. 验证/测试 → qa-engineer"
+  echo "    4. 文档/收尾 → technical-writer"
+  echo ""
+  echo "  每完成一个子任务，记录到 task/logs："
+  echo "    bash \${OPENCLAW_SCRIPTS}/task-record.sh --task \"子任务描述\" --result \"成功|失败\""
+  echo ""
+  echo "  全部完成后，手动触发闭环反思（loop-check closure 模式）。"
+  echo ""
+  echo "  📖 手动编排完整指南: docs/ao-compose-format.md"
+  echo ""
+}
 if ! command -v ao &>/dev/null; then
   echo "[sofagent] ⚠️ agency-orchestrator (ao) 未安装——编排引擎不可用"
   echo "[sofagent] 降级方案：手动拆任务 → 用 task-record.sh 逐条记录 → 手动闭环"
-  echo "[sofagent] 安装 ao: npm install -g agency-orchestrator  或  加 --no-ao 参数跳过"
+  echo "[sofagent] 安装 ao: npm install -g agency-orchestrator@0.7.5  或  加 --no-ao 参数跳过"
+  # 如果用户传了任务描述，自动切到默认编排模式
+  TASK_FOR_DEFAULT=""
+  for arg in "$@"; do
+    case "$arg" in
+      --*) ;;
+      -*) ;;
+      *) TASK_FOR_DEFAULT="$arg"; break ;;
+    esac
+  done
+  if [ -n "$TASK_FOR_DEFAULT" ]; then
+    DEFAULT_ORCHESTRATE "$TASK_FOR_DEFAULT"
+  fi
   exit 0
 fi
 
+# set -e: 任何命令失败立即退出，防止编排在半截状态继续执行
+# set -u: 未定义变量引用视为错误，防止空变量导致静默行为异常
+# set -o pipefail: 管道中任一命令失败都计为失败，防止 `grep | wc` 等忽略中间错误
 set -euo pipefail
 
-VERSION="1.0.0"
+VERSION="0.82"
+
+# ── 确定脚本目录 ──
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 info()  { echo -e "${BLUE}[orchestrate]${NC} $1"; }
 ok()    { echo -e "${GREEN}[✓]${NC} $1"; }
@@ -45,6 +89,8 @@ DRY_RUN=false
 USE_WORKTREE=false
 AUTO_LEVEL=false
 LEVEL=1  # 默认完整编排
+MAX_RETRIES=3  # v0.73: 默认重试上限
+AO_MODEL=""    # v0.73: 可选 --model 参数（flash/pro）
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -52,6 +98,10 @@ while [[ $# -gt 0 ]]; do
     --worktree)   USE_WORKTREE=true; shift ;;
     --level)      LEVEL="$2"; shift 2 ;;
     --auto)       AUTO_LEVEL=true; shift ;;
+    --max-retries) MAX_RETRIES="$2"; shift 2 ;;
+    --max-retries=*) MAX_RETRIES="${1#*=}"; shift ;;
+    --model)      AO_MODEL="$2"; shift 2 ;;
+    --model=*)    AO_MODEL="${1#*=}"; shift ;;
     --version)    echo "sofagent-task-orchestrate v${VERSION}"; exit 0 ;;
     --help)
       echo "sofagent task-orchestrate v${VERSION}"
@@ -63,6 +113,8 @@ while [[ $# -gt 0 ]]; do
       echo "    task-orchestrate.sh \"任务描述\" --worktree   创建独立 worktree"
       echo "    task-orchestrate.sh \"任务描述\" --level N    编排深度 (1-4)"
       echo "    task-orchestrate.sh \"任务描述\" --auto       自动选择最优深度"
+      echo "    task-orchestrate.sh \"任务描述\" --max-retries N  重试上限（默认 3）"
+      echo "    task-orchestrate.sh \"任务描述\" --model flash|pro  指定模型"
       echo ""
       echo "  编排深度:"
       echo "    1=完整编排  首次运行，AO 全量分析拆解"
@@ -107,6 +159,9 @@ LEVEL_LABEL="${LEVEL_DESC[$((LEVEL-1))]:-完整编排}"
 info "任务: $TASK_DESC"
 info "编排深度: L${LEVEL} — ${LEVEL_LABEL}"
 echo ""
+
+# ── 审计：编排开始 ──
+bash "${SCRIPT_DIR}/audit.sh" --operation "orchestrate" --target "${TASK_DESC}" --result "开始, L${LEVEL}" 2>/dev/null || true
 
 # ── 生成任务唯一标识 ──
 # 修复：shasum 缺失时用 sha256sum 回退（与 load-chain.sh hash_stdin 对齐）
@@ -222,10 +277,14 @@ if [ "$AUTO_LEVEL" = true ]; then
   info "🎯 自动模式: 采用 L${LEVEL} (${LEVEL_LABEL})"
 fi
 
-# ── 共享出口：滑窗回滚 + 清理 → exit（避免多出口散落）──
+# ── 共享出口：滑窗回滚 + 审计 + 清理 → exit（避免多出口散落）──
 _exit_orchestrate() {
   local code="${1:-0}"
   sliding_window_rollback "$TASK_SLUG" "$LEVEL" || true
+  # ── 审计：编排结束 ──
+  local result_str
+  if [ "$code" -eq 0 ]; then result_str="成功"; else result_str="失败"; fi
+  bash "${SCRIPT_DIR}/audit.sh" --operation "orchestrate" --target "${TASK_DESC}" --result "${result_str}, L${LEVEL}, ${ELAPSED:-?}s" 2>/dev/null || true
   exit "$code"
 }
 
@@ -264,7 +323,7 @@ case $LEVEL in
     fi
     warn "L3 模板缺失或 ao_template 字段为空，降级到 L2 缓存复用"
     LEVEL=2
-    # fall through to L2
+    # L3 fallback：内联 L2 逻辑（复制 L2 case 块作为降级路径，bash case 不支持 fall-through）
     if [ -f "$CACHED_YAML" ]; then
       WORKFLOW_FILE="$CACHED_YAML"
       ok "L2 模板复用 — 复用历史: ${TASK_SLUG}.yaml"
@@ -307,7 +366,7 @@ if [ "$SKIP_ORCHESTRATE" = true ]; then
   echo "  ════════════════════════════════════"
   echo "  编排结束。exit code: $EXIT_CODE · 深度: L4 (自主执行)"
   echo ""
-  exit $EXIT_CODE
+  _exit_orchestrate "$EXIT_CODE"
 fi
 
 # ── Step 1: AO 编排预览 ──
@@ -320,10 +379,14 @@ if [ "$SKIP_AO_COMPOSE" = true ]; then
 else
   # 正常路径：ao compose
   info "Step 1/4 · AO 编排分析..."
+  [ -n "$AO_MODEL" ] && info "  模型: ${AO_MODEL}"
 
 WORKFLOW_FILE="${TMPDIR:-/tmp}/sofagent-workflow-$$.yaml"
 
-ao compose "$TASK_DESC" > "$WORKFLOW_FILE" 2>/dev/null || {
+AO_COMPOSE_ARGS=""
+[ -n "$AO_MODEL" ] && AO_COMPOSE_ARGS="--model ${AO_MODEL}"
+
+ao compose $AO_COMPOSE_ARGS "$TASK_DESC" > "$WORKFLOW_FILE" 2>/dev/null || {
   warn "ao compose 未生成 YAML，尝试直接执行..."
   if [ "$DRY_RUN" = false ]; then
     ao compose "$TASK_DESC" --run
@@ -346,7 +409,7 @@ else
     ao compose "$TASK_DESC" --run
   fi
   rm -f "$WORKFLOW_FILE"
-  exit 0
+  _exit_orchestrate 0
 fi
 
 fi  # 结束 SKIP_AO_COMPOSE 分支
@@ -398,37 +461,43 @@ fi
 echo ""
 
 # ── Step 3: Harness 约束注入 ──
-info "Step 3/4 · 注入 Harness 约束..."
+info "Step 3/4 · Harness 约束（2026.6.x 自动注入）..."
 OPENCLAW_DIR="${OPENCLAW_STATE_DIR:-$HOME/.openclaw}"
-HOOK_PATH="${OPENCLAW_DIR}/hooks/load-chain.sh"
+HOOK_DIR="${OPENCLAW_DIR}/hooks/sofagent-load-chain"
 
-if [ -f "$HOOK_PATH" ] && [ -x "$HOOK_PATH" ]; then
-  # 生成约束块
-  constraint_block=$(OPENCLAW_STATE_DIR="$OPENCLAW_DIR" bash "$HOOK_PATH" 2>/dev/null || echo "")
-  if [ -n "$constraint_block" ]; then
-    # 写入临时约束文件
-    CONSTRAINT_FILE="${TMPDIR:-/tmp}/sofagent-constraint-$$.txt"
-    echo "$constraint_block" > "$CONSTRAINT_FILE"
-    ok "Harness 约束已注入 (${#constraint_block} 字符)"
-    # AO 通过环境变量感知约束文件
-    export SOFAGENT_CONSTRAINT_FILE="$CONSTRAINT_FILE"
-  else
-    warn "加载链未输出约束，检查安装状态"
-  fi
+# OpenClaw 2026.6.x 起改用声明式内部 hook：ao run 拉起的子 Agent 在 bootstrap 时
+# 自动触发 sofagent-load-chain（注入 think.md + rules.md），第 1 层宪法由 skill 系统
+# 注入。旧版 load-chain.sh 手动生成约束块的方式已废弃——无需在此重复注入。
+if [ -f "${HOOK_DIR}/handler.ts" ] && [ -f "${HOOK_DIR}/HOOK.md" ]; then
+  ok "加载链 hook 就绪（子 Agent bootstrap 时自动注入第 2、3 层）"
 else
-  warn "加载链 Hook 未找到: $HOOK_PATH"
-  warn "请先运行 install.sh 完成部署"
+  warn "加载链 hook 未部署: $HOOK_DIR"
+  warn "子 Agent 可能拿不到 think.md/rules.md，请先运行 install.sh"
 fi
 
 echo ""
 
 # ── Step 4: 执行编排 ──
 info "Step 4/4 · 执行任务编排..."
+[ -n "$AO_MODEL" ] && info "  模型: ${AO_MODEL}"
 START_TIME=$(date +%s)
 
-# set -e 下裸命令失败会立即退出（失败日志/滑窗降级都成死代码）→ 用 || 捕获
-EXIT_CODE=0
-ao run "$WORKFLOW_FILE" 2>&1 || EXIT_CODE=$?
+AO_RUN_ARGS=""
+[ -n "$AO_MODEL" ] && AO_RUN_ARGS="--model ${AO_MODEL}"
+
+# ── 重试循环（v0.73: --max-retries 默认 3）──
+# set -e 下裸 ao run 失败会立即退出（重试/失败日志都成死代码）→ 用 || 捕获退出码（fork 修复）
+RETRY_COUNT=0
+EXIT_CODE=1
+while [ "$RETRY_COUNT" -lt "$MAX_RETRIES" ]; do
+  if [ "$RETRY_COUNT" -gt 0 ]; then
+    warn "重试 ${RETRY_COUNT}/${MAX_RETRIES}..."
+  fi
+  EXIT_CODE=0
+  ao run $AO_RUN_ARGS "$WORKFLOW_FILE" 2>&1 || EXIT_CODE=$?
+  [ "$EXIT_CODE" -eq 0 ] && break
+  RETRY_COUNT=$((RETRY_COUNT + 1))
+done
 
 END_TIME=$(date +%s)
 ELAPSED=$(( END_TIME - START_TIME ))
@@ -437,7 +506,11 @@ echo ""
 
 # ── 结果汇总 ──
 if [ $EXIT_CODE -eq 0 ]; then
-  ok " 任务完成（耗时 ${ELAPSED}s）"
+  if [ "$RETRY_COUNT" -gt 0 ]; then
+    ok " 任务完成（耗时 ${ELAPSED}s，重试 ${RETRY_COUNT} 次后成功）"
+  else
+    ok " 任务完成（耗时 ${ELAPSED}s）"
+  fi
   # 成功后缓存工作流（Level 1 时才生成新 YAML，值得缓存）
   if [ "$SKIP_AO_COMPOSE" = false ] && [ -f "$WORKFLOW_FILE" ]; then
     mkdir -p "$ORCHESTRATOR_DIR"
@@ -445,7 +518,7 @@ if [ $EXIT_CODE -eq 0 ]; then
       info "工作流已缓存: ${TASK_SLUG}.yaml (下次可用 L2 复用)"
   fi
 else
-  warn " 任务结束（exit $EXIT_CODE，耗时 ${ELAPSED}s）"
+  warn " 任务结束（exit $EXIT_CODE，耗时 ${ELAPSED}s，重试 ${RETRY_COUNT}/${MAX_RETRIES} 次）"
 fi
 
 # 记录到 task/logs

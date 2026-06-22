@@ -1,10 +1,10 @@
-# sofagent Developer
+# sofagent Development
 
-> 给开发者的内部机制文档。普通用户看 [Handbook](./HANDBOOK.md)，设计决策看 [Design](./ARCHITECTURE.md)。
+> 给开发者的内部机制文档。普通用户看 [Handbook](./HANDBOOK.md)，设计决策看 [Architecture](./ARCHITECTURE.md)。
 >
 > 这里讲 sofagent 内部怎么跑——Skill 结构、编排引擎、反思闭环、数据架构。
 >
-> v0.63 · 2026-06-19 · 孔放勋
+> v0.82 · 2026-06-22 · 孔放勋
 
 <img src="images/sofagent.png" alt="sofagent" width="300" />
 
@@ -50,7 +50,7 @@ Skill 不只是 Markdown 文件和一段提示词。根据 Anthropic Cloud Code 
 
 ```
 SKILL.md 启动
-  ├─ 三层加载链（SKILL.md + think.md + rules.md）← load-chain.sh 注入
+  ├─ 三层加载链（SKILL.md + think.md + rules.md）← 内部 hook sofagent-load-chain 注入（OpenClaw）/ Agent 主动 Read（其他平台）
   ├─ A0 判级
   │   ├─ 🟢🟡 简单/中等 → task-aware 直接处理
   │   └─ 🔴 复杂 → engine.md 点火
@@ -68,7 +68,7 @@ SKILL.md 启动
               └─ 口头汇报
 ```
 
-安装方式：把 `SKILL.md` 放到 Skills 目录（OpenClaw 一般在 `~/.openclaw/skills/`），一条命令搞定。OpenClaw 通过 Hook 在 session 启动时自动加载 Skill。WorkBuddy、Claude Code、Codex、Hermes 通过种子指令自启——详见 [Handbook §五](./HANDBOOK.md#五安装与跨平台)。
+安装方式：把 `SKILL.md` 放到 Skills 目录（OpenClaw 一般在 `~/.openclaw/skills/`），一条命令搞定。OpenClaw 通过 Hook 在 session 启动时自动加载 Skill。WorkBuddy、Codex、Hermes Agent、Claude Code 通过种子指令自启——详见 [Handbook §五](./HANDBOOK.md#五安装与跨平台)。
 
 主 Agent 的日常：接活 → 看 `scoring.md`（谁靠谱）→ 看 think.md 反思区（上次踩了什么坑）→ 看 `orchestrator/`（有没有最优配置）→ 干完记入 `task/logs/`。数据流向总结见 [Developer §七](#七数据文件架构)。
 
@@ -83,9 +83,10 @@ SKILL.md 启动
 
 **`sofagent/` 目录结构**（4 个子目录 + 6 个 Skill .md 文件 = 1 主 Skill + 5 子 Skill）：
 
-- `constitution/`（1 个文件）：rules.md（执行层，用户自定义规则。v0.62：宪法已内联进 SKILL.md）
+- `rules.md`（1 个文件）：执行层，你的运行规范。v0.62：宪法已内联进 SKILL.md。v0.73：从 constitution/ 扁平化到根目录
 - `data/`（5 个文件）：数据模板 think.md、orchestrator.md、task.md、scoring.md、IDENTITY.md
-- `scripts/`（6 个脚本）：install.sh、verify.sh、uninstall.sh、load-chain.sh、task-record.sh、task-orchestrate.sh
+- `scripts/`（5 个脚本）：install.sh、verify.sh、uninstall.sh、task-record.sh、task-orchestrate.sh
+- `hooks/sofagent-load-chain/`（2 个文件）：HOOK.md + handler.ts（OpenClaw 2026.6.x 内部 hook，agent:bootstrap 事件注入第 2、3 层）
 - Skill 文件（6 个 .md）：SKILL.md（主入口）、engine.md（入口引擎）、entry-gate.md（入境闸门）、task-aware.md（每任务闸门）、task-closure.md（离境闸门）、loop-check.md（循环顾问）
 
 **配套脚本速查**：
@@ -95,20 +96,20 @@ SKILL.md 启动
 | `install.sh` | 多平台一键安装（7 步） | 你手动跑 | `bash install.sh --platform openclaw` |
 | `uninstall.sh` | 删约束文件，保留 `.sofagent/` 用户数据 | 你手动跑 | `bash uninstall.sh --platform openclaw` |
 | `verify.sh` | 装后验证 9 类 24+ 检查项 | 安装完自动跑，也可手动 | `bash verify.sh --json`（CI/CD） |
-| `load-chain.sh` | OpenClaw Hook：三层约束注入 + SHA-256 缓存 + `[LLM自评]` 标记位折半（P0-5） | 每次 prompt 构建前自动触发 | 不手动跑 |
+| `load-chain.sh` | ~~已废弃~~（v0.64 删除，改用 `hooks/sofagent-load-chain/` 内部 hook） | — | — |
 | `task-orchestrate.sh` | 包装 ao compose：worktree 隔离 + 约束注入 + 成本汇总 + 清理 | engine.md 拆任务后自动调用 | 不手动跑 |
 | `task-record.sh` | 收集任务数据 → 拼 Markdown → 追加到 task/logs/ | 闭环时自动调用 | 不手动跑 |
 
-> 💡 前三个是用户侧工具（装/卸/验），后三个是运行时脚本（Agent 自动调，你不需要手动跑）。
+> 💡 前三个是用户侧工具（装/卸/验），后三个是运行时脚本（Agent 自动调，你不需要手动跑）。**设计原则**：确定性操作脚本化——去重、格式校验、文件清理这类即刻运算，脚本比 Agent 更快更省更可靠。Agent 只负责判断和执行，代码做稳定工具，Markdown 保存状态。
 
 **跨平台自启：种子指令**
 
-五大平台都有自己的 Native 记忆文件，系统保证每轮自动注入。WorkBuddy / OpenClaw 上 Agent 首次初始化时自动写入种子指令；Claude Code / Codex / Hermes 需要你手动在文件末尾贴一行。
+五大平台都有自己的 Native 记忆文件，系统保证每轮自动注入。WorkBuddy / OpenClaw 上 Agent 首次初始化时自动写入种子指令；Codex / Hermes Agent / Claude Code 需要你手动在文件末尾贴一行。
 
 种子指令内容：
 > 每次对话开始，读取 `SKILL.md` 并执行其中的入口流程。如果数据文件（`.sofagent/`）不存在，先执行初始化。
 
-手动平台贴到对应文件末尾：Claude Code → `~/.claude/CLAUDE.md` 或项目根 `CLAUDE.md` | Codex → `AGENTS.md` | Hermes → `SOUL.md`。搞一次永久生效。
+手动平台贴到对应文件末尾：Codex → `AGENTS.md` | Hermes Agent → `SOUL.md` | Claude Code → `~/.claude/CLAUDE.md` 或项目根 `CLAUDE.md`。搞一次永久生效。
 
 
 ---
@@ -143,7 +144,7 @@ SKILL.md 启动
 
 用百分比不用轮次——模型窗口在变大，轮次限制是刻舟求剑。完整推理见 ARCHITECTURE.md session-boundary。
 
-> 子 Agent 不参与这套机制——用完即焚，上下文溢出说明编排拆得不够细。
+> 子 Agent 不参与这套机制——脏数据隔离，上下文溢出说明编排拆得不够细。
 
 ### 编排（Orchestration）：ao compose + /goal + 用户确认
 
@@ -247,13 +248,13 @@ sofagent 补上 ao compose 不做的
 
 两轮澄清见 [Handbook §四](./HANDBOOK.md#四任务目标制定)，编排深度见本章下节，闭环反思见 [Developer §五](#五自进化机制)。
 
-### 子 Agent（Sub-agent）：用完即焚
+### 子 Agent（Sub-agent）：脏数据隔离
 
 ```
 创建 → 执行 → 反思 → 存储 → 上传 → 销毁
 ```
 
-无状态、无持久化身份、无历史包袱。有价值信息在销毁前已通过反思转移。如果反思质量不够好——最后 3 轮原始对话在 Session Store（OpenClaw 自动保存的对话记录）暂存 7 天作为兜底，可以回溯。7 天后自动清理。
+无状态、无持久化身份、无历史包袱。子 Agent 执行期间产生的日志、报错等「脏数据」仅存在于子 Agent 上下文，执行完毕后隔离销毁，不影响主 Agent 稳定性。有价值信息在销毁前已通过反思转移。如果反思质量不够好——最后 3 轮原始对话在 Session Store（OpenClaw 自动保存的对话记录）暂存 7 天作为兜底，可以回溯。7 天后自动清理。
 
 > 💡 Loop Engineering 强调**执行和审核必须分离**——「写的人和查的人分开，挑刺才客观」。sofagent 的职责分离：**子 Agent 负责干活**（生成器），**skill-iterate 负责评分**（独立评估器——角色分离让执行者不自评，非独立进程，详见 [Developer §五](#五自进化机制) 工程边界），**orchestrator/ 中间检查点负责决策**（继续/停止/回滚）。干活的不能说「我做完了」——那是评估器的事。
 
@@ -285,7 +286,7 @@ engine.md 在 ao compose 拆完任务后从 ClawHub 搜索并集成。四步：�
 
 信任等级四档（已验证/试用中/未验证/不推荐）的完整规则见 [ARCHITECTURE.md](./ARCHITECTURE.md#trust-levels)。
 
-> 💡 Skill 选择由主 Agent 自己完成：读 scoring/、做语义匹配、选评分最高且最匹配的——这是 LLM 的长项，不需要额外工具。
+> 💡 Skill 选择由主 Agent 自己完成：读 scoring/、做语义匹配、选评分最高且最匹配的——这是 LLM 的长项，不需要额外工具。当前 Skill < 100 直接匹配足够；超 100 后走两阶段（关键词召回 top-20 → LLM 重排），这是远期工程预留。
 
 
 ### Skill 描述分离
@@ -405,20 +406,11 @@ ao compose 拆完任务
 
 闭环后从四个角度反馈：① 编排对不对 → orchestrator/ | ② Skills 选得对不对 → scoring.md | ③ A/B 有没有新结论 → orchestrator/ | ④ 模型选得值不值 → orchestrator/ 成本对比。四路汇总到 orchestrator/，下次同类任务直接用最优配置。
 
-### 复盘自评每次任务闭环后，主 Agent 切换到 Loop Agent 视角，从八个维度评估整套编排：
+### 复盘自评每次任务闭环后，主 Agent 切换到 Loop Agent 视角，从八个生产力维度评估整套编排（另有第九维「判断力」独立计分，见下）：
 
-> ⚠️ 工程边界：Loop Agent 不是独立进程或独立模型调用，是主 Agent 切换 prompt 以顾问身份输出建议。"独立复盘"指角色隔离，不是工程隔离。评分是 LLM 自评，无客观基准，结果仅供横向对比参考。详见 [ARCHITECTURE.md](./ARCHITECTURE.md#known-limits)。
+> ⚠️ 工程边界：Loop Agent 不是独立进程或独立模型调用，是主 Agent 切换 prompt 以顾问身份输出建议。"独立复盘"指角色隔离，不是工程隔离。评分是 LLM 自评，无客观基准，结果仅供横向对比参考。详见 [LIMITATIONS.md](./LIMITATIONS.md#known-limits)。
 
-| 维度 | 评什么 | 怎么评 |
-|------|------|------|
-| 编排准确性 | ao compose 拆任务拆得对不对 | 子任务粒度、依赖关系是否跑通 |
-| Skill 匹配度 | Skills 选对了没 | 每个子任务用的 Skill 是否合适 |
-| 模型经济性 | Flash/Pro 分配值不值 | 成本 vs 质量对比 |
-| 执行流畅度 | 跑得顺不顺 | 有没有卡顿、重试、超时 |
-| 结果完整性 | 输出有没有缺斤少两 | 用户要的东西做全了没有 |
-| 复用潜力 | 换同类任务还能不能用 | 这套配置的通用性 |
-| 流程合规 | Skill 有没有按规定的步骤走 | 是否跳步、是否绕过必须的检查点 |
-| Loop 有效性 | 检查点是否真正起到了作用 | 5=提前发现问题 / 3=漏掉但后续修复 / 1=误报浪费注意力 |
+八维评分维度：① 编排准确性（子任务粒度/依赖是否跑通）② Skill 匹配度（Skill 是否合适）③ 模型经济性（成本 vs 质量）④ 执行流畅度（有无卡顿/重试/超时）⑤ 结果完整性（用户要的做全了没）⑥ 复用潜力（同类任务通用性）⑦ 流程合规（是否跳步/绕过检查点）⑧ Loop 有效性（检查点是否起作用：5=提前发现/3=漏但修复/1=误报浪费）。另有第九维「判断力」（弃权率/拒绝高风险任务）与前八维分开计分——不放在同一个总分里，「你很能跑」和「你很会判断什么不该跑」是两件事。见 [loop-check.md](./sofagent/loop-check.md) 第九维定义。
 
 复盘加权算出总分，分比上次高 → 覆盖 orchestrator/ 为最优配置。分比上次低 → 不动，标「待验证」。
 
@@ -464,23 +456,19 @@ orchestrator/ 就是迭代的中枢。它不记原始数据，只记最优结论
 
 ### 复盘——不让做事的给自己打分
 
-每次任务闭环后，主 Agent 切换到 Loop Agent 视角完成 ③④——角色隔离让执行者不给自己打分（非工程隔离，详见 [ARCHITECTURE.md](./ARCHITECTURE.md#known-limits)），比让执行者自评更公平。
+每次任务闭环后，主 Agent 切换到 Loop Agent 视角完成 ③④——角色隔离让执行者不给自己打分（非工程隔离，详见 [LIMITATIONS.md](./LIMITATIONS.md#known-limits)）。代价：每次闭环多消耗 ~3,000-5,000 token，中等以上任务占比不到 10%；简单任务（🟢）直接跳过 ③④。
 
-代价：每次闭环多消耗 ~3,000-5,000 token。对于中等以上任务（30K+ token），占比不到 10%。简单任务（🟢）不需要——直接跳过 ③④。
-
-> LLM 的评分本身有波动——同一组配置跑两次可能差 1 分。应对：看趋势不看单次、淘汰门槛设高（连续 3 次 <3.0 才降级）、人工可覆盖。完整讨论见 [ARCHITECTURE.md](./ARCHITECTURE.md#known-limits)。
+> LLM 的评分本身有波动——同一组配置跑两次可能差 1 分。应对：看趋势不看单次、淘汰门槛设高（连续 3 次 <3.0 才降级）、人工可覆盖。完整讨论见 [LIMITATIONS.md](./LIMITATIONS.md#known-limits)。
 
 ### 冷启动怎么办
 
-新 Skill 装上、新任务类型出现——没有历史数据对照的时候：
-
-前 5 次只记录不做判断，第 6 次起进入看趋势模式。为什么是 5 次而不是 3 次或 10 次——完整推理见 [ARCHITECTURE.md](./ARCHITECTURE.md#cold-start)。
+新 Skill 装上、新任务类型出现——没有历史数据对照。前 5 次只记录不做判断，第 6 次起进入看趋势模式。完整推理见 [ARCHITECTURE.md](./ARCHITECTURE.md#cold-start)。
 
 ### 评审者与执行者分离
 
 闭环评分的评审者分离按平台分级实现——OpenClaw 用 `session.spawn` 工程隔离（可类比引用 Self Harness 的方向性结论）；非 OpenClaw 是 prompt 级约束（无机制保障，效果未实测，不引用具体数字）。
 
-> 完整实现细节与诚实声明见 `loop-check.md` closure 模式 §平台分级评审；设计权衡见 [ARCHITECTURE.md §三「复盘评分是 LLM 自评」](./ARCHITECTURE.md#复盘评分是-llm-自评评审者与执行者不分离)。
+> 完整实现细节与诚实声明见 `loop-check.md` closure 模式 §平台分级评审；设计权衡见 [LIMITATIONS.md「复盘评分是 LLM 自评」](./LIMITATIONS.md#复盘评分是-llm-自评评审者与执行者不分离)。
 
 以上是 sofagent 跑起来之后的自我进化逻辑——从 Skills 评分到编排模板，全自动迭代。但在一切开始之前得先把它装上——接下来讲怎么装、在不同平台上怎么跑。
 
@@ -495,6 +483,8 @@ orchestrator/ 就是迭代的中枢。它不记原始数据，只记最优结论
 任务闭环时（用户确认完成、/new、/reset），主 Agent 自问：「这次有什么值得记住的？」
 
 有 → 写一条 ≤200 字的日摘要到 `think.md` 反思区。没有 → 跳过。简单直接。
+
+> 💡 **核心度量**：一个记忆条目的价值 = 它在未来任务中被检索并有效辅助决策的次数。不是「存了多少」，是「用了几次」。
 
 ### 反思什么
 
@@ -530,7 +520,7 @@ think.md
 每条摘要带一个权重标签，由 LLM 根据三个信号估算（新鲜度 + 反思关联 + 引用热度）。权重集中管理：≥0.5 进反思区，<0.5 进归档区。算法细节见 [ARCHITECTURE.md](./ARCHITECTURE.md#weight-gate)。
 
 > ⚠️ 权重计算由 LLM 执行，同一组数据跑两次可能有 0.1 偏差。反思区的 ≤2K token 硬上限才是真正的安全阀。
-> ⚠️ 反思分三种来源标记：[LLM自评]（纯模型判断，权重 ×0.5）/ [已验证]（有客观证据）/ [用户确认]（用户明确确认）。防止不准的自评通过 think.md 自我强化。详见 [Design §三](./ARCHITECTURE.md#反思自评的自噬风险)。
+> ⚠️ 反思分三种来源标记：[LLM自评]（纯模型判断，权重 ×0.3）/ [已验证]（有客观证据）/ [用户确认]（用户明确确认）。防止不准的自评通过 think.md 自我强化。详见 [Design §三](./ARCHITECTURE.md#反思自评的自噬风险)。
 
 权重 <0.3 且超过 90 天的自动清理，不再占反思空间。已归档的记忆 30 天内不做二次评估——避免反复横跳浪费 token。
 
@@ -559,7 +549,7 @@ task/logs 是水源，只追加不修改，永远可以回溯。不需要额外�
 | 文件 | 干什么 | 加载 | 初始化时机 | 模板 |
 |------|------|:--:|------|------|
 | `think.md` | 反思摘要，每次会话加载，≤2K token | 全文 | 首次加载 | [模板](sofagent/data/think.md) |
-| `rules.md` | 你的规则，优先级最高 | 全文 | 安装时部署 | [模板](sofagent/constitution/rules.md) |
+| `rules.md` | 你的运行规范（含项目目标、验收标准、风险边界、停止条件），优先级最高 | 全文 | 安装时部署 | [模板](sofagent/rules.md) |
 | `task/plans/` | 任务计划 | 日期文件名 | 第二轮澄清时 | [模板](sofagent/data/task.md) |
 | `task/logs/` | 执行日志 | 日期目录树 | 首次闭环后 | [模板](sofagent/data/task.md) |
 | `scoring/` | Skill 评分记录 | 树形 | 首次任务后 | [模板](sofagent/data/scoring.md) |
@@ -594,6 +584,16 @@ task/logs 是水源，只追加不修改，永远可以回溯。不需要额外�
 4. **每次发版前跑一遍对照检查**：打开 [Handbook §二](./HANDBOOK.md#二三层加载链) 的 3 层表格和 [Developer §七](#七数据文件架构) 的模板示例，逐行对照 sofagent/ 下的全部 6 个模板文件
 
 > 📎 一句话：**手册改了，模板必须跟着改。反过来也一样。**
+
+> 💡 v0.7x 企业合规三件套（日志脱敏 / 数据保留 / 审计日志）的系统设计详见 [docs/system_design.md](./docs/system_design.md)——含 sanitize 脱敏链、cleanup 清理逻辑、audit 审计流的完整架构说明。
+
+### sofagent 四层记忆模型（对照 Agent 记忆机制设计指南）
+
+> 来源：「Agent 记忆机制设计指南」(2026-06-20)。核心判断："记什么比存多少更重要"。
+
+四层映射：当前窗口（平台 session）→ 近期摘要（`think.md` 反思区 ≤2K token）→ 用户档案（`rules.md` `key: value`）→ 历史事件（`task/logs/` + `orchestrator/`）。三层原则：① 写入——记稳定模式/重复错误/用户确认的偏好，不记单次异常和 LLM 推测；② 更新——冲突时检测→合并或覆盖，非简单追加；③ 遗忘——`cleanup.sh` 定时清理，缺低价值自动压缩。
+
+**已知局限**：think.md 当前为追加模式，不具备冲突检测和合并能力——3 条矛盾反思可并存。规划版本 v0.9。
 
 ---
 

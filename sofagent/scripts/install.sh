@@ -3,7 +3,7 @@
 # sofagent install.sh · 多平台一键安装脚本
 # ============================================================
 # 将 sofagent 约束层部署到目标平台，让 Agent 获得治理能力。
-# 由 DeepSeek V4 Pro 辅助生成。
+# 由 DeepSeek V4 Pro 和 GLM-5.2 配合生成。
 #
 # 平台支持：
 #   --platform openclaw  → 完整部署（宪法 + Hook + 脚本 + 断路器）
@@ -18,7 +18,7 @@
 # ============================================================
 
 set -euo pipefail
-VERSION="1.0.0"
+VERSION="0.82"
 
 # ── 颜色输出 ──
 RED='\033[0;31m'
@@ -40,12 +40,46 @@ INSTALL_LOG=""  # 等 TARGET 确定后再设置
 
 _log() { echo "[$(date '+%H:%M:%S')] $1" >> "${INSTALL_LOG:-/dev/null}"; }
 
+# ── 快速模式（v0.73：初始化在参数解析之前，set -u 兼容）──
+QUICK_MODE="${QUICK_MODE:-0}"
+REMOTE_MODE="${REMOTE_MODE:-0}"
+
 # ── 欢迎 ──
+if [ "$QUICK_MODE" = "0" ]; then
 echo ""
 echo "  ╔═══════════════════════════════════╗"
 echo "  ║   sofagent Harness · installer   ║"
 echo "  ╚═══════════════════════════════════╝"
 echo ""
+fi
+
+# ── 远程安装模式（curl pipe bash 场景）──
+if [ "${REMOTE_MODE}" = "1" ]; then
+  info "远程安装模式——克隆仓库..."
+  REMOTE_TMP="$(mktemp -d /tmp/sofagent-remote-XXXXXX)"
+  if command -v git &>/dev/null; then
+    git clone https://github.com/KongFangXun/sofagent.git "$REMOTE_TMP" 2>/dev/null || {
+      err "git clone 失败，请检查网络或手动 git clone"
+      exit 1
+    }
+    ok "仓库已克隆到: $REMOTE_TMP"
+    cd "$REMOTE_TMP"
+    # 重新调用 install.sh，去掉 --remote，透传其他参数
+    REMAINING_ARGS=""
+    for arg in "${ORIGINAL_ARGS[@]}"; do
+      [ "$arg" = "--remote" ] && continue
+      REMAINING_ARGS="$REMAINING_ARGS $arg"
+    done
+    exec bash sofagent/scripts/install.sh $REMAINING_ARGS
+  else
+    err "git 不可用——远程安装需要 git。请先安装 git 或使用完整安装方式："
+    err "  git clone https://github.com/KongFangXun/sofagent.git && cd sofagent && bash sofagent/scripts/install.sh"
+    exit 1
+  fi
+fi
+
+# ── 审计：安装开始 ──
+bash "${SCRIPT_DIR}/audit.sh" --operation "install" --target "开始" --result "v${VERSION}, $(uname -s)" 2>/dev/null || true
 
 # ════════════════════════════════════════
 # Step 1: 确定平台和目标路径
@@ -54,6 +88,9 @@ info "Step 1/7 · 确定安装平台..."
 
 # ── 参数解析 ──
 PLATFORM=""
+QUICK_MODE=0  # v0.73: --quick 模式跳过交互确认
+REMOTE_MODE=0
+ORIGINAL_ARGS=("$@")  # 保存原始参数（--remote 模式下透传用）
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --platform)     PLATFORM="$2"; shift 2 ;;
@@ -62,6 +99,9 @@ while [[ $# -gt 0 ]]; do
     --project-dir=*) PROJECT_DIR="${1#*=}"; shift ;;
     --no-ao)         NO_AO=1; shift ;;
     --no-config-inject) NO_CONFIG_INJECT=1; shift ;;
+    --quick)         QUICK_MODE=1; shift ;;
+    --ci)            QUICK_MODE=1; shift ;;  # --ci = --quick 别名，CI 环境用
+    --remote)        REMOTE_MODE=1; shift ;;
     -h|--help)
       echo "用法: install.sh [--platform openclaw|workbuddy|claude|codex|hermes] [--project-dir DIR]"
       echo ""
@@ -74,6 +114,8 @@ while [[ $# -gt 0 ]]; do
       echo "  --project-dir DIR   指定项目工作目录（.sofagent/ 数据目录会创建在这里，默认当前目录）"
       echo "  --no-ao             跳过 agency-orchestrator 全局安装（企业环境用）"
       echo "  --no-config-inject  跳过自动注入 OpenClaw config.json（企业环境用）"
+      echo "  --quick             快速模式——跳过交互确认和验证等待，直接完整安装"
+      echo "  --remote            远程安装模式——自动 git clone 仓库后安装（配合 curl pipe bash 使用）"
       exit 0
       ;;
     *) shift ;;
@@ -109,7 +151,8 @@ else
   warn "  bash sofagent/scripts/install.sh --project-dir ~/my-project"
 fi
 
-# 数据目录变量提前统一定义——避免 set -u 下 claude/codex/hermes 收尾 summary 引用未绑定变量
+# ── 统一初始化数据目录路径（所有平台共用，避免 set -u 下未定义）──
+# 用 ${VAR:-...} 保留外部 SOFAGENT_DATA 覆盖能力（fork 修复）
 SOFAGENT_DATA="${SOFAGENT_DATA:-${PROJECT_DIR}/.sofagent}"
 
 # ── 按平台确定目标路径 ──
@@ -119,7 +162,6 @@ case "$PLATFORM" in
     ok "WorkBuddy 平台——部署 Skill 文件并验证数据目录。"
     TARGET="$HOME/.workbuddy"
     # 检查 .sofagent/ 数据目录
-    SOFAGENT_DATA="${PROJECT_DIR}/.sofagent"
     if [ -d "$SOFAGENT_DATA" ]; then
       ok "  · .sofagent/ 数据目录存在"
       if [ -x "${SCRIPT_DIR}/verify.sh" ]; then
@@ -146,13 +188,13 @@ echo "=== sofagent install $(date -u +'%Y-%m-%dT%H:%M:%SZ') ===" >> "$INSTALL_LO
 _log "TARGET=$TARGET"
 _log "SCRIPT_DIR=$SCRIPT_DIR"
 
-CONSTITUTION_SRC="${SCRIPT_DIR}/../constitution"
+RULES_SRC="${SCRIPT_DIR}/../rules.md"
 
 # 检查源文件
-if [ ! -d "$CONSTITUTION_SRC" ]; then
-  err "找不到 constitution/ 目录。请在 sofagent 项目根目录下运行此脚本。"
+if [ ! -f "$RULES_SRC" ]; then
+  err "找不到 rules.md。请在 sofagent 项目根目录下运行此脚本。"
   err "  当前脚本位置: $SCRIPT_DIR"
-  err "  期望目录: $CONSTITUTION_SRC"
+  err "  期望文件: $RULES_SRC"
   exit 1
 fi
 
@@ -182,8 +224,11 @@ if command -v npm &>/dev/null; then
   NPM_ROOT=$(npm root -g 2>/dev/null || echo "")
   if [ -n "$NPM_ROOT" ] && [ ! -w "$NPM_ROOT" ]; then
     warn "npm 全局目录不可写 ($NPM_ROOT)"
-    warn "  npm install -g 可能需要 sudo。考虑使用 nvm 或更改 npm prefix："
-    warn "  https://docs.npmjs.com/resolving-eacces-permissions-errors"
+    warn "  npm install -g 可能需要 sudo。考虑以下方案："
+    warn "  方案 1: 使用 nvm 或更改 npm prefix（免 sudo）"
+    warn "    https://docs.npmjs.com/resolving-eacces-permissions-errors"
+    warn "  方案 2: 本次用 sudo npm install -g（不推荐）"
+    warn "  方案 3: 加 --no-ao 跳过编排引擎（不影响底线约束）"
   fi
 else
   warn "npm 未安装"
@@ -201,8 +246,16 @@ if command -v ao &>/dev/null; then
 else
   if command -v npm &>/dev/null; then
     info "正在安装 agency-orchestrator..."
-    npm install -g agency-orchestrator 2>&1 | tail -1 || \
-      npm install -g agency-orchestrator --registry=https://registry.npmmirror.com 2>&1 | tail -1
+    set +e
+    npm install -g agency-orchestrator@0.7.5 2>&1 | tail -1 || \
+      npm install -g agency-orchestrator@0.7.5 --registry=https://registry.npmmirror.com 2>&1 | tail -1
+    AO_EXIT_CODE=$?
+    set -e
+    if [ $AO_EXIT_CODE -ne 0 ] && ! command -v ao &>/dev/null; then
+      warn "npm install 失败——编排引擎（ao compose）将不可用"
+      warn "  降级方案：手动拆任务 → bash scripts/task-record.sh 逐条记录 → 手动闭环"
+      warn "  （地基约束层——底线+铁律不受影响）"
+    fi
     if command -v ao &>/dev/null; then
       ok "agency-orchestrator 安装成功"
       _log "ao installed successfully"
@@ -252,28 +305,56 @@ info "Step 4/7 · 部署宪法文件 → $TARGET"
 
 mkdir -p "$TARGET"
 
-# 宪法文件（v0.62：宪法已内联进 SKILL.md，只部署 rules.md）
-for f in rules.md; do
-  src="${CONSTITUTION_SRC}/${f}"
-  dst="${TARGET}/${f}"
-  if [ -f "$src" ]; then
-    if [ -f "$dst" ]; then
-      # 已有文件，对比是否相同
-      if cmp -s "$src" "$dst" 2>/dev/null; then
-        ok "$f — 已存在且内容相同，跳过"
-      else
-        warn "$f — 已有内容不同，已备份为 ${f}.bak → 覆盖更新"
-        cp "$dst" "${dst}.bak"
-        cp "$src" "$dst"
-      fi
+# OpenClaw: rules.md 统一部署到 skills/sofagent/（~/.openclaw/rules.md 留给用户自定义）
+# 其他平台: rules.md 部署到 $TARGET/rules.md
+if [ "$PLATFORM" = "openclaw" ]; then
+  RULES_DST_DIR="${TARGET}/skills/sofagent"
+  mkdir -p "$RULES_DST_DIR"
+  RULES_DST="${RULES_DST_DIR}/rules.md"
+  if [ -f "$RULES_SRC" ]; then
+    if [ -f "$RULES_DST" ] && cmp -s "$RULES_SRC" "$RULES_DST" 2>/dev/null; then
+      ok "rules.md — 已存在且内容相同，跳过（${RULES_DST_DIR}）"
     else
-      cp "$src" "$dst"
-      ok "$f — 已安装"
+      [ -f "$RULES_DST" ] && cp "$RULES_DST" "${RULES_DST}.bak"
+      cp "$RULES_SRC" "$RULES_DST"
+      ok "rules.md — 已安装到 ${RULES_DST_DIR}"
     fi
   else
-    err "$f — 源文件不存在: $src"
+    err "rules.md — 源文件不存在: $RULES_SRC"
   fi
-done
+  # v0.73: 旧路径自动迁移——检测 constitution/rules.md → 迁移到新路径，删除旧目录
+  OLD_RULES="${TARGET}/skills/sofagent/constitution/rules.md"
+  if [ -f "$OLD_RULES" ]; then
+    warn "检测到旧路径 constitution/rules.md，自动迁移到新路径 rules.md..."
+    cp "$OLD_RULES" "$RULES_DST" 2>/dev/null && ok "已迁移到 ${RULES_DST}" || warn "迁移失败，请手动复制"
+    rm -f "$OLD_RULES"
+    rmdir "$(dirname "$OLD_RULES")" 2>/dev/null || true
+    ok "旧 constitution/ 目录已清理"
+  fi
+  warn "~/.openclaw/rules.md 保留为用户自定义文件，不会被覆盖"
+else
+  # 非 OpenClaw 平台：宪法文件部署到 $TARGET 根
+  for f in rules.md; do
+    src="${SCRIPT_DIR}/../${f}"
+    dst="${TARGET}/${f}"
+    if [ -f "$src" ]; then
+      if [ -f "$dst" ]; then
+        if cmp -s "$src" "$dst" 2>/dev/null; then
+          ok "$f — 已存在且内容相同，跳过"
+        else
+          warn "$f — 已有内容不同，已备份为 ${f}.bak → 覆盖更新"
+          cp "$dst" "${dst}.bak"
+          cp "$src" "$dst"
+        fi
+      else
+        cp "$src" "$dst"
+        ok "$f — 已安装"
+      fi
+    else
+      err "$f — 源文件不存在: $src"
+    fi
+  done
+fi
 
 # ════════════════════════════════════════
 # Step 5: 复制 Skill + 数据文件
@@ -313,6 +394,17 @@ for f in "$SCRIPT_DIR"/../data/*.md; do
   ((copied++)) || true
 done
 
+# rules.md — 同时部署到 Skill 目录，使 SKILL.md 的相对路径可解析
+RULES_DST="${SKILL_DST}/rules.md"
+if [ -f "$RULES_SRC" ]; then
+  if [ -f "$RULES_DST" ] && cmp -s "$RULES_SRC" "$RULES_DST" 2>/dev/null; then
+    :  # 内容相同，跳过
+  else
+    cp "$RULES_SRC" "$RULES_DST"
+    ((copied++)) || true
+  fi
+fi
+
 if [ "$copied" -gt 0 ]; then
   ok "$copied 个 Skill/数据文件已部署到 $SKILL_DST"
 else
@@ -323,47 +415,53 @@ fi
 # Step 6: 部署加载链 Hook（仅 OpenClaw）
 # ════════════════════════════════════════
 if [ "$PLATFORM" = "openclaw" ]; then
-info "Step 6/7 · 部署加载链 Hook（OpenClaw）..."
+info "Step 6/7 · 部署加载链 Hook（OpenClaw 2026.6.x 内部 hook 架构）..."
 
-# 部署 load-chain.sh
-mkdir -p "${TARGET}/hooks"
-LOADCHAIN_SRC="${SCRIPT_DIR}/load-chain.sh"
-LOADCHAIN_DST="${TARGET}/hooks/load-chain.sh"
+# OpenClaw 2026.6.x 改用声明式内部 hook：把 HOOK.md + handler.ts 放到
+# ~/.openclaw/hooks/sofagent-load-chain/，并在 openclaw.json 的
+# hooks.internal.entries.sofagent-load-chain 注册 enabled:true，即自动生效。
+# 旧版 load-chain.sh（config.json.before_prompt_build shell hook）已废弃，不再部署。
 
-if [ -f "$LOADCHAIN_SRC" ]; then
-  cp "$LOADCHAIN_SRC" "$LOADCHAIN_DST"
-  chmod +x "$LOADCHAIN_DST"
-  ok "加载链 Hook 已部署: $LOADCHAIN_DST"
+HOOK_SRC_DIR="${SCRIPT_DIR}/../hooks/sofagent-load-chain"
+HOOK_DST_DIR="${TARGET}/hooks/sofagent-load-chain"
 
-  # ── 自动注册 Hook ──
-  # 确定配置路径（优先 OPENCLAW_CONFIG_PATH，其次 TARGET/config.json，再试 WorkBuddy）
+if [ -d "$HOOK_SRC_DIR" ] && [ -f "${HOOK_SRC_DIR}/HOOK.md" ] && [ -f "${HOOK_SRC_DIR}/handler.ts" ]; then
+  mkdir -p "$HOOK_DST_DIR"
+  cp "${HOOK_SRC_DIR}/HOOK.md"   "${HOOK_DST_DIR}/HOOK.md"
+  cp "${HOOK_SRC_DIR}/handler.ts" "${HOOK_DST_DIR}/handler.ts"
+  ok "加载链内部 Hook 已部署: ${HOOK_DST_DIR}（HOOK.md + handler.ts）"
+
+  # ── 在 openclaw.json 注册 hooks.internal.entries.sofagent-load-chain ──
+  # 优先 OPENCLAW_CONFIG_PATH，其次 $TARGET/openclaw.json（2026.6.x 默认配置文件）
   HOOK_CONFIG=""
-  for cfg in "${OPENCLAW_CONFIG_PATH:-}" "${TARGET}/config.json" "$HOME/.workbuddy/config.json"; do
+  for cfg in "${OPENCLAW_CONFIG_PATH:-}" "${TARGET}/openclaw.json"; do
     [ -n "$cfg" ] && [ -f "$cfg" ] && { HOOK_CONFIG="$cfg"; break; }
   done
-  [ -z "$HOOK_CONFIG" ] && HOOK_CONFIG="${TARGET}/config.json"
+  [ -z "$HOOK_CONFIG" ] && HOOK_CONFIG="${TARGET}/openclaw.json"
 
   # 检查是否已注册
-  if [ -f "$HOOK_CONFIG" ] && grep -q "$LOADCHAIN_DST" "$HOOK_CONFIG" 2>/dev/null; then
+  ALREADY_REGISTERED=0
+  if [ -f "$HOOK_CONFIG" ] && grep -q '"sofagent-load-chain"' "$HOOK_CONFIG" 2>/dev/null; then
+    ALREADY_REGISTERED=1
+  fi
+
+  if [ "$ALREADY_REGISTERED" = "1" ]; then
     ok "Hook 已注册: $HOOK_CONFIG"
   else
     info "正在注册 Hook → $HOOK_CONFIG"
-    cp "$HOOK_CONFIG" "${HOOK_CONFIG}.bak" 2>/dev/null || true
+    [ -f "$HOOK_CONFIG" ] && cp "$HOOK_CONFIG" "${HOOK_CONFIG}.bak" 2>/dev/null || true
 
+    REGISTER_OK=0
     if command -v jq &>/dev/null; then
-      # jq 合并 hooks.before_prompt_build
-      jq \
-        --arg cmd "$LOADCHAIN_DST" \
-        '.hooks.before_prompt_build = ((.hooks.before_prompt_build // []) + [{type: "shell", command: $cmd}])' \
+      # jq 合并 hooks.internal.entries.sofagent-load-chain = {enabled:true}
+      jq '.hooks.internal.enabled = ((.hooks.internal.enabled // false) or true) | .hooks.internal.entries = ((.hooks.internal.entries // {}) + {"sofagent-load-chain": {"enabled": true}})' \
         "$HOOK_CONFIG" > "${HOOK_CONFIG}.tmp" 2>/dev/null && \
-      mv "${HOOK_CONFIG}.tmp" "$HOOK_CONFIG" && \
-      ok "Hook 已自动注册" || \
-      warn "Hook 自动注册失败，请手动添加（配置已备份为 ${HOOK_CONFIG}.bak）"
+      mv "${HOOK_CONFIG}.tmp" "$HOOK_CONFIG" && REGISTER_OK=1 || \
+      warn "jq 注册失败（配置已备份为 ${HOOK_CONFIG}.bak）"
     elif command -v node &>/dev/null; then
-      CONFIG_PATH="$HOOK_CONFIG" LOADCHAIN_CMD="$LOADCHAIN_DST" node - << 'HOOK_INJECT'
+      CONFIG_PATH="$HOOK_CONFIG" node - << 'HOOK_INJECT'
 const fs = require('fs');
 const path = process.env.CONFIG_PATH;
-const cmd = process.env.LOADCHAIN_CMD;
 let raw = '{}';
 try { raw = fs.readFileSync(path, 'utf-8'); } catch(e) {}
 let cfg = {};
@@ -375,30 +473,34 @@ try {
   cfg = JSON.parse(cleaned || '{}');
 } catch(e) { cfg = {}; }
 cfg.hooks = cfg.hooks || {};
-cfg.hooks.before_prompt_build = cfg.hooks.before_prompt_build || [];
-cfg.hooks.before_prompt_build.push({type: 'shell', command: cmd});
+cfg.hooks.internal = cfg.hooks.internal || {};
+cfg.hooks.internal.enabled = true;
+cfg.hooks.internal.entries = cfg.hooks.internal.entries || {};
+cfg.hooks.internal.entries['sofagent-load-chain'] = { enabled: true };
 fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + '\n');
 HOOK_INJECT
-      if [ $? -eq 0 ]; then
-        ok "Hook 已自动注册（Node.js）"
-      else
-        warn "Hook 自动注册失败，请手动添加（配置已备份为 ${HOOK_CONFIG}.bak）"
-      fi
+      [ $? -eq 0 ] && REGISTER_OK=1 || warn "Node 注册失败（配置已备份为 ${HOOK_CONFIG}.bak）"
     else
       warn "jq 和 Node.js 均不可用——Hook 需要手动注册"
-      warn "  将以下内容添加到 $HOOK_CONFIG 的 hooks.before_prompt_build："
-      warn "  {\"type\": \"shell\", \"command\": \"$LOADCHAIN_DST\"}"
+    fi
+
+    if [ "$REGISTER_OK" = "1" ]; then
+      ok "Hook 已自动注册（hooks.internal.entries.sofagent-load-chain）"
+    else
+      warn "请手动在 $HOOK_CONFIG 添加："
+      warn '  {"hooks":{"internal":{"enabled":true,"entries":{"sofagent-load-chain":{"enabled":true}}}}}'
     fi
   fi
 else
-  warn "找不到 load-chain.sh，跳过。加载链需要手动部署: $LOADCHAIN_SRC"
+  warn "找不到 hook 源文件（$HOOK_SRC_DIR/HOOK.md 或 handler.ts），跳过部署"
+  warn "  仓库结构异常？请从 https://github.com/KongFangXun/sofagent 重新拉取"
 fi
 
-# 部署配套脚本（task-log + task-orchestrate）
+# 部署配套脚本（task-record + task-orchestrate + cleanup + audit）
 SCRIPTS_DST="${TARGET}/scripts"
 mkdir -p "$SCRIPTS_DST"
 
-for script in task-record.sh task-orchestrate.sh; do
+for script in task-record.sh task-orchestrate.sh cleanup.sh audit.sh compress-memory.sh; do
   src="${SCRIPT_DIR}/${script}"
   dst="${SCRIPTS_DST}/${script}"
   if [ -f "$src" ]; then
@@ -410,7 +512,18 @@ for script in task-record.sh task-orchestrate.sh; do
   fi
 done
 
-# 创建 .sofagent/ 数据目录（复用 line 113 已定义的 SOFAGENT_DATA，不再覆盖）
+# 部署共享配置加载器（lib/config.sh）
+LIB_SRC="${SCRIPT_DIR}/lib/config.sh"
+LIB_DST="${SCRIPTS_DST}/lib/config.sh"
+if [ -f "$LIB_SRC" ]; then
+  mkdir -p "$(dirname "$LIB_DST")"
+  cp "$LIB_SRC" "$LIB_DST"
+  ok "配置加载器已部署: $LIB_DST"
+else
+  warn "找不到 lib/config.sh，跳过"
+fi
+
+# 创建 .sofagent/ 数据目录（SOFAGENT_DATA 已在平台分支前统一初始化）
 if [ ! -d "$SOFAGENT_DATA" ]; then
   mkdir -p "$SOFAGENT_DATA/task/logs" "$SOFAGENT_DATA/orchestrator/workflows"
   chmod 700 "$SOFAGENT_DATA" 2>/dev/null || true  # 权限加固：仅当前用户可访问
@@ -579,12 +692,18 @@ echo ""
 case "$PLATFORM" in
   openclaw)
     echo "  已部署文件："
-    echo "    宪法文件:      $TARGET/rules.md（宪法内联在 SKILL.md）"
+    echo "    宪法文件:      $TARGET/skills/sofagent/rules.md（宪法内联在 SKILL.md）"
     echo "    Skill 文件:     $TARGET/skills/sofagent/（6 核心 + 4 数据模板）"
-    echo "    加载链 Hook:    $TARGET/hooks/load-chain.sh"
-    echo "    配套脚本:       $TARGET/scripts/{task-record,task-orchestrate}.sh"
+    echo "    加载链 Hook:    $TARGET/hooks/sofagent-load-chain/（HOOK.md + handler.ts）"
+    echo "    配套脚本:       $TARGET/scripts/{task-record,task-orchestrate,cleanup,audit,compress-memory}.sh"
     echo "    断路器:         ${CONFIG_FILE:-未配置}（tools.loopDetection）"
     echo "    数据目录:       $SOFAGENT_DATA"
+    echo ""
+    echo "  ┌──────────────────────────────────────────┐"
+    echo "  │  OpenClaw: 完整就绪                       │"
+    echo "  │  三层加载链自动注入 + Hook 强制加载        │"
+    echo "  │  + 编排引擎 + 脚本 + 断路器，全部可用      │"
+    echo "  └──────────────────────────────────────────┘"
     ;;
   claude|codex|hermes)
     echo "  已部署文件："
@@ -592,6 +711,21 @@ case "$PLATFORM" in
     echo "    数据目录:       $SOFAGENT_DATA"
     echo ""
     echo "  ⚠️  ${PLATFORM} 是手动平台——请复制上方种子指令到配置文件。"
+    echo ""
+    echo "  ┌──────────────────────────────────────────┐"
+    echo "  │  ${PLATFORM}: 仅基础约束生效              │"
+    echo "  │  SKILL.md 底线+铁律有效；Hook/编排不可用   │"
+    echo "  └──────────────────────────────────────────┘"
+    ;;
+  workbuddy)
+    echo "  已部署文件："
+    echo "    Skill 文件:     $TARGET/skills/sofagent/（6 核心 + 4 数据模板）"
+    echo "    数据目录:       $SOFAGENT_DATA"
+    echo ""
+    echo "  ┌──────────────────────────────────────────┐"
+    echo "  │  WorkBuddy: 仅基础约束生效                │"
+    echo "  │  Skill 系统加载底线+铁律；脚本沙箱受限     │"
+    echo "  └──────────────────────────────────────────┘"
     ;;
 esac
 echo ""
@@ -604,24 +738,73 @@ if [ "${NO_CONFIG_INJECT:-0}" = "1" ]; then
   echo "  ⚠️  --no-config-inject 已启用：未注入断路器配置，需手动配置 tools.loopDetection"
 fi
 if command -v ao &>/dev/null && [ -z "${DEEPSEEK_API_KEY:-}${ANTHROPIC_API_KEY:-}${OPENAI_API_KEY:-}" ]; then
-  echo "  🔑 配置 AO API Key（这是你已有的 LLM Key，不是新的）："
+  echo "  🔑 配置 AO API Key（这是你已有的 LLM Key，三选一）："
   echo "     export DEEPSEEK_API_KEY=你的DeepSeek密钥"
+  echo "     export ANTHROPIC_API_KEY=你的Claude密钥"
+  echo "     export OPENAI_API_KEY=你的OpenAI密钥"
   echo "     写入 ~/.zshrc 永久生效"
   echo ""
 fi
 
 # 加载链状态提示（仅 OpenClaw）
-if [ -f "${HOOK_CONFIG:-}" ] && grep -q "$LOADCHAIN_DST" "$HOOK_CONFIG" 2>/dev/null; then
-  echo "  ✅ Hook 已自动注册 → 每次启动自动注入约束"
+if [ -f "${HOOK_CONFIG:-}" ] && grep -q '"sofagent-load-chain"' "$HOOK_CONFIG" 2>/dev/null; then
+  echo "  ✅ Hook 已自动注册（openclaw.json）→ 每次启动自动注入约束"
 else
   echo "  ⚠️  Hook 未注册 → 约束层不会自动加载"
-  echo "     将以下行加入 ${HOOK_CONFIG} 的 hooks.before_prompt_build："
-  echo "     {\"type\": \"shell\", \"command\": \"$LOADCHAIN_DST\"}"
+  echo "     在 ${HOOK_CONFIG} 的 hooks.internal.entries 添加："
+  echo '     {"sofagent-load-chain":{"enabled":true}}'
 fi
 echo "  💡 运行 verify.sh 验证安装是否完整。"
 fi  # end OpenClaw-only status
 
+# ── Step 6b: daemon 可选安装 ──
+OS_TYPE="$(uname -s)"
+DAEMON_INSTALL_SCRIPT="${SCRIPT_DIR}/daemon-install.sh"
+if [ "${REMOTE_MODE:-0}" = "1" ]; then
+  DAEMON_INSTALL_SCRIPT="${TARGET_DIR}/sofagent/scripts/daemon-install.sh"
+fi
+
+if [ -f "$DAEMON_INSTALL_SCRIPT" ] && [ -x "$DAEMON_INSTALL_SCRIPT" ]; then
+  case "$OS_TYPE" in
+    Darwin|Linux)
+      # --quick / CI 环境：跳过 daemon 安装（不交互）
+      if [ "$QUICK_MODE" = "1" ]; then
+        echo ""
+        echo "  ⏭️  --quick 模式：跳过 daemon 安装"
+        echo "  （以后可以手动运行: bash sofagent/scripts/daemon-install.sh）"
+      else
+        echo ""
+        echo "  ┌──────────────────────────────────────────┐"
+        echo "  │  Step 6b: daemon 后台进程（可选）          │"
+        echo "  └──────────────────────────────────────────┘"
+        echo ""
+        echo "  daemon 是一个轻量后台进程，监控 think.md / rules.md 变化。"
+        echo "  macOS (launchd) / Linux (systemd) 支持，Windows 自动跳过。"
+        echo ""
+        echo "  是否安装 daemon？[y/N] "
+        read -r INSTALL_DAEMON
+        if [ "${INSTALL_DAEMON:-n}" = "y" ] || [ "${INSTALL_DAEMON:-n}" = "Y" ]; then
+          bash "$DAEMON_INSTALL_SCRIPT"
+        else
+          echo "  已跳过 daemon 安装（以后可以手动运行: bash sofagent/scripts/daemon-install.sh）"
+        fi
+      fi
+      ;;
+    *)
+      echo ""
+      echo "  daemon 不支持此系统 ($OS_TYPE)，自动跳过。"
+      echo "  Windows 用户：宪法层约束正常生效，daemon 后台监控跳过。"
+      ;;
+  esac
+else
+  echo ""
+  echo "  daemon-install.sh 未找到，跳过 daemon 安装。"
+fi
+
 echo ""
+
+# ── 审计：安装完成 ──
+bash "${SCRIPT_DIR}/audit.sh" --operation "install" --target "完成" --result "成功" 2>/dev/null || true
 
 # 写入安装日志摘要
 _log "install complete: constitution=1(rules) skills=6 hook=1 loopdetect=1"

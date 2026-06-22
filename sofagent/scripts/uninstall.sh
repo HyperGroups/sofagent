@@ -3,7 +3,7 @@
 # sofagent uninstall.sh · 卸载脚本
 # ============================================================
 # 删除 sofagent 约束文件，但保留 .sofagent/ 用户数据。
-# 由 DeepSeek V4 Pro 辅助生成。
+# 由 DeepSeek V4 Pro 和 GLM-5.2 配合生成。
 #
 # 用法：./uninstall.sh [--platform openclaw|workbuddy|claude|codex|hermes]
 #       ./uninstall.sh --force   跳过确认，直接删除
@@ -11,7 +11,10 @@
 # ============================================================
 
 set -euo pipefail
-VERSION="1.0.0"
+VERSION="0.82"
+
+# ── 确定脚本目录 ──
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 info()  { echo -e "${BLUE}[uninstall]${NC} $1"; }
@@ -36,7 +39,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --force  跳过确认，直接删除"
       echo "  --list   仅列出会被删除的文件，不执行"
       echo "  --platform 指定目标平台（未指定时自动探测）"
-      echo "  保留: .sofagent/ 数据目录（task-log / orchestrator）"
+      echo "  保留: .sofagent/ 数据目录（task-record / orchestrator）"
       exit 0 ;;
     *) shift ;;
   esac
@@ -64,13 +67,23 @@ case "$PLATFORM" in
     echo ""
     removed=0
 
-    # 清理宪法文件（v0.62：宪法内联在 SKILL.md，只清理 rules.md）
+    # 清理宪法文件（v0.73：rules.md 扁平化）
     for f in rules.md; do
       path="$HOME/.workbuddy/$f"
       if [ "$LIST_ONLY" = true ]; then
         if [ -f "$path" ]; then info "  $path"; fi
       else
         if [ -f "$path" ]; then rm -f "$path" && ok "已删除: $HOME/.workbuddy/$f"; fi
+      fi
+      # 兼容旧 skills/sofagent/ 路径
+      skill_path="$HOME/.workbuddy/skills/sofagent/$f"
+      if [ -f "$skill_path" ]; then
+        if [ "$LIST_ONLY" = true ]; then info "  $skill_path"; else rm -f "$skill_path" && ok "已删除: skills/sofagent/$f"; fi
+      fi
+      # 兼容旧 constitution/ 路径
+      old_path="$HOME/.workbuddy/skills/sofagent/constitution/$f"
+      if [ -f "$old_path" ]; then
+        if [ "$LIST_ONLY" = true ]; then info "  $old_path（v0.72 前残留）"; else rm -f "$old_path" && rmdir "$(dirname "$old_path")" 2>/dev/null || true; ok "已删除旧版残留: constitution/$f"; fi
       fi
       ((removed++)) || true
     done
@@ -138,6 +151,9 @@ echo "  保留用户数据："
 echo "    $SOFAGENT_DATA"
 echo ""
 
+# ── 审计：卸载开始 ──
+bash "${SCRIPT_DIR}/audit.sh" --operation "uninstall" --target "开始" --result "v${VERSION}, ${PLATFORM}" 2>/dev/null || true
+
 if [ "$FORCE" != true ]; then
   read -r -p "  确认删除？[y/N] " confirm
   case "$confirm" in
@@ -148,8 +164,32 @@ fi
 
 removed=0
 
-# ── 删除 / 列出宪法文件（v0.62：宪法内联在 SKILL.md，只清理 rules.md）──
+# ── 删除 / 列出宪法文件（v0.73：rules.md 扁平化到 skills/sofagent/rules.md）──
 for f in rules.md; do
+  # 新路径
+  path="${OPENCLAW_DIR}/skills/sofagent/${f}"
+  if [ -f "$path" ]; then
+    if [ "$LIST_ONLY" = true ]; then
+      info "  $path"
+    else
+      rm -f "$path" "${path}.bak"
+      ok "已删除: skills/sofagent/$f"
+    fi
+    ((removed++)) || true
+  fi
+  # 兼容旧 constitution/ 路径
+  old_path="${OPENCLAW_DIR}/skills/sofagent/constitution/${f}"
+  if [ -f "$old_path" ]; then
+    if [ "$LIST_ONLY" = true ]; then
+      info "  $old_path（v0.72 前残留）"
+    else
+      rm -f "$old_path" "${old_path}.bak"
+      rmdir "$(dirname "$old_path")" 2>/dev/null || true
+      ok "已删除旧版残留: constitution/$f"
+    fi
+    ((removed++)) || true
+  fi
+  # 旧根路径
   path="${OPENCLAW_DIR}/${f}"
   if [ -f "$path" ]; then
     if [ "$LIST_ONLY" = true ]; then
@@ -187,17 +227,31 @@ if [ -d "$SKILLS_DIR" ]; then
   ((removed++)) || true
 fi
 
-# ── 删除 / 列出加载链 Hook ──
-HOOK_PATH="${OPENCLAW_DIR}/hooks/load-chain.sh"
-if [ -f "$HOOK_PATH" ]; then
+# ── 删除 / 列出加载链 Hook（2026.6.x 内部 hook 目录）──
+HOOK_DIR="${OPENCLAW_DIR}/hooks/sofagent-load-chain"
+if [ -d "$HOOK_DIR" ]; then
   if [ "$LIST_ONLY" = true ]; then
-    info "  $HOOK_PATH"
+    info "  $HOOK_DIR/（HOOK.md + handler.ts）"
   else
-    rm -f "$HOOK_PATH"
+    rm -rf "$HOOK_DIR"
     rmdir "${OPENCLAW_DIR}/hooks" 2>/dev/null || true
-    ok "已删除: hooks/load-chain.sh"
+    ok "已删除: hooks/sofagent-load-chain/"
   fi
   ((removed++)) || true
+fi
+
+# ── 注销 openclaw.json 中的 hook 注册 ──
+OC_CONFIG="${OPENCLAW_DIR}/openclaw.json"
+if [ -f "$OC_CONFIG" ] && command -v jq &>/dev/null; then
+  if jq -e '.hooks.internal.entries."sofagent-load-chain"' "$OC_CONFIG" >/dev/null 2>&1; then
+    if [ "$LIST_ONLY" = true ]; then
+      info "  $OC_CONFIG (hooks.internal.entries.sofagent-load-chain)"
+    else
+      jq 'del(.hooks.internal.entries."sofagent-load-chain")' "$OC_CONFIG" > "${OC_CONFIG}.tmp" 2>/dev/null
+      mv "${OC_CONFIG}.tmp" "$OC_CONFIG" 2>/dev/null && ok "已注销 openclaw.json 中的 sofagent-load-chain hook"
+    fi
+    ((removed++)) || true
+  fi
 fi
 
 # ── 删除 / 列出配套脚本 ──
@@ -234,9 +288,20 @@ if [ "$LIST_ONLY" = true ]; then
   exit 0
 fi
 
+# ── daemon 清理 ──
+DAEMON_UNINSTALL="${SCRIPT_DIR}/daemon-uninstall.sh"
+if [ -f "$DAEMON_UNINSTALL" ] && [ -x "$DAEMON_UNINSTALL" ]; then
+  echo ""
+  echo "  清理 daemon..."
+  bash "$DAEMON_UNINSTALL" 2>/dev/null || true
+fi
+
 # ── 清理安装日志 ──
 INSTALL_LOG="${OPENCLAW_DIR}/.sofagent-install.log"
 rm -f "$INSTALL_LOG"
+
+# ── 审计：卸载完成 ──
+bash "${SCRIPT_DIR}/audit.sh" --operation "uninstall" --target "完成" --result "成功" 2>/dev/null || true
 
 echo ""
 echo "───────────────────────────────────────"
