@@ -18,3 +18,6 @@ Thumbs.db
 
 # agency-orchestrator local config
 .env
+
+# 本地 bug 记录目录（仅本机保留，不提交上游）
+/issues/
