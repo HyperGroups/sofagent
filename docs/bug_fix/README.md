@@ -1,8 +1,8 @@
 # 确定性修复记录（fork 专用）
 
-> 本目录是 **HyperGroups fork 自有记录**，只存在于 fork 仓库的镜像分支（`upstream`），
-> **不向上游提 PR**。向上游贡献时从 `upstream/main` 另切干净的 `fix/xxx` 主题分支，
-> 只带代码改动，不带本目录。
+> 本目录是 **HyperGroups fork 自有记录**，只存在于 fork 仓库的镜像分支（`KongFangXun`，原名 `upstream`，
+> 已改名以消除与 remote `upstream` 的歧义），**不向上游提 PR**。向上游贡献时从 `upstream/main`
+> 另切干净的 `fix/xxx` 主题分支，只带代码改动，不带本目录。
 >
 > 与 `issues/`（gitignored，本地审计草稿）的分工：
 > - `issues/` —— 原始发现台账，本地保留，不进版本库。
@@ -12,10 +12,26 @@
 
 ## 工作流
 
-1. 在镜像分支（`upstream`）按自己的方式修问题、记录到本目录、打 tag 标记。
+1. 在镜像分支（`KongFangXun`）按自己的方式修问题、记录到本目录、打 tag 标记。
 2. 真要回贡上游时，从最新 `upstream/main` 切 `fix/xxx` 主题分支，把对应那一组修复做成**原子提交**。
 3. 按作者规矩（CONTRIBUTING.md + PR 模板）走：`verify.sh` 全过 → 部署循环 → 非 OpenClaw 平台测试。
-4. 先推到自己 fork（`origin`）的主题分支试，再决定是否提 PR 到 `upstream`。
+4. 先推到自己 fork（`origin`）的主题分支，再从该分支开 PR 到上游 `KongFangXun:main`。
+
+> **PR 创建方式（实测）**：本机终端到 GitHub 的 HTTPS 被墙、只有 SSH 通；`gh` 用 PAT
+> 建 PR 一律被拒（`Resource not accessible by personal access token`，三种 token 都试过，
+> 疑账号级限制/邮箱未验证）。**改用浏览器会话开 PR 成功**——`git push`（SSH）推分支，
+> 再去上游 Pull requests 页点 "recently pushed branches" 黄条的 *Compare & pull request*。
+
+## 提交状态
+
+| 主题分支 | 覆盖的 bug | 状态 |
+|---------|-----------|------|
+| `fix/cross-platform-portability` | shasum 回退、stat GNU/BSD | ✅ **已提 [PR #1](https://github.com/KongFangXun/sofagent/pull/1)**（OPEN，待作者 review） |
+| `fix/set-e-premature-exit` | set -e 提前退出（3 处） | ⏳ 待提（等 #1 反馈后） |
+| `fix/arg-parsing-shift` | verify/uninstall 参数解析 | ⏳ 待提 |
+| `fix/numeric-and-unbound-guards` | 除零 / grep -c 双 0 / set -u | ⏳ 待提 |
+
+> 策略：单人维护者，不一次性砸多个 PR。先用 #1（作者点名最缺的跨平台兼容）走通流程、摸清接受口味，再逐个发。
 
 ## 拟分组（= 拟提的主题分支）
 
@@ -46,16 +62,19 @@
 
 **复现**：`bash verify.sh --quiet --platform claude` → 平台探测错误。
 
-### 3. `fix/cross-platform-portability` — BSD/GNU 工具差异（中）
+### 3. `fix/cross-platform-portability` — BSD/GNU 工具差异（中）✅ 已提 PR #1
 
 作者在 CONTRIBUTING「最需要的技能」里点名的 bash BSD/macOS 兼容性。
+> 已作为 [PR #1](https://github.com/KongFangXun/sofagent/pull/1) 提交（+4/-2，2 文件，OPEN）。
+> 验证：`bash -n` 通过 + 功能验证（sha256sum 回退出哈希、`stat -c %Y` 取到真实 mtime）；
+> 部署循环/非 OpenClaw 实测因无安装环境未跑，已在 PR 正文如实标注。
 
 | 位置 | 修复 |
 |------|------|
 | `task-orchestrate.sh` TASK_SLUG | `shasum` 缺失时回退 `sha256sum`（Alpine/精简 Linux 无 shasum） |
-| `verify.sh` think.md 时间 | `stat -c %Y`（GNU）回退 `stat -f %m`（BSD），原代码 BSD-only 在 Linux 永远算超旧 |
+| `verify.sh` think.md 时间 | `stat -c %Y`（GNU）优先 + `stat -f %m`（BSD）回退。原 BSD-only 写法在 GNU/Linux 上 `-f`=`--file-system`、`%m` 被当文件名，**取不到 mtime**，反思频率检查失真 |
 
-**复现**：精简 Linux 容器跑 `task-orchestrate.sh` → TASK_SLUG 恒为 unknown；Linux 跑 `verify.sh` → 反思频率永远报"超旧"。
+**复现**：精简 Linux 容器跑 `task-orchestrate.sh` → TASK_SLUG 恒为 unknown；Linux 跑 `verify.sh` → think.md 反思频率计算错误（实测旧写法在 GNU 上会输出文件系统信息、破坏算术）。
 
 ### 4. `fix/numeric-and-unbound-guards` — 数值/未绑定健壮性（低-中）
 
