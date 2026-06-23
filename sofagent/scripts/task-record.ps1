@@ -49,6 +49,10 @@ if ($Help) {
     exit 0
 }
 
+# ── 加载合规配置（dot-source，对齐 task-record.sh 的 source config.sh）──
+$cfg = Join-Path $PSScriptRoot "lib\config.ps1"
+if (Test-Path $cfg) { . $cfg }
+
 # ── 默认值辅助（对齐 bash 的 ${VAR:-default}）──
 function Def($v, $d) { if ([string]::IsNullOrEmpty($v)) { $d } else { $v } }
 
