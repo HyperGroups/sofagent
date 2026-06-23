@@ -89,8 +89,9 @@ function Get-CharCount($f) { try { ([System.IO.File]::ReadAllText($f)).Length } 
 # ════════ Quick 模式：4 项核心检查 ════════
 if ($Quick) {
     if (-not $Json -and -not $Quiet) { Write-Host "  [快速模式] 4 项核心检查" }
-    $skillQuick = Join-Path $OPENCLAW_DIR "skills\sofagent\SKILL.md"
-    if ((Test-Path $skillQuick) -and (Select-String -Path $skillQuick -Pattern "4.*底线|10.*铁律" -Quiet)) { Check-Pass "SKILL.md 存在且含宪法（4底线+10铁律）" } else { Check-Fail "SKILL.md 缺失或宪法关键词不全" }
+    # 修复 .sh 老 bug：quick 模式应按平台找 SKILL.md，不能写死 .openclaw（workbuddy 装在 .workbuddy）
+    $skillQuick = @("$OPENCLAW_DIR\skills\sofagent\SKILL.md", "$up\.workbuddy\skills\sofagent\SKILL.md", "$up\.openclaw\skills\sofagent\SKILL.md") | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($skillQuick -and (Select-String -Path $skillQuick -Pattern "4.*底线|10.*铁律" -Quiet)) { Check-Pass "SKILL.md 存在且含宪法（4底线+10铁律）" } else { Check-Fail "SKILL.md 缺失或宪法关键词不全" }
     if (Test-Path (Join-Path (Get-Location).Path ".sofagent")) { Check-Pass ".sofagent/ 数据目录存在" } else { Check-Warn ".sofagent/ 数据目录不存在（首次使用会自动创建）" }
     if (Get-Command ao -ErrorAction SilentlyContinue) { Check-Pass "ao compose 可用 — v$(ao --version 2>$null)" } else { Check-Warn "ao compose 不可用——编排引擎降级为默认编排" }
     $rulesQuick = @("$OPENCLAW_DIR\skills\sofagent\rules.md", "$up\.workbuddy\skills\sofagent\rules.md", "$up\.openclaw\rules.md") | Where-Object { Test-Path $_ } | Select-Object -First 1
