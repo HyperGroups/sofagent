@@ -69,7 +69,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ── 定位 think.md ──
-SOFAGENT_DATA="${PWD}/.sofagent"
+SOFAGENT_DATA="${SOFAGENT_DATA:-${PWD}/.sofagent}"
 THINK_FILE="${SOFAGENT_DATA}/think.md"
 ARCHIVE_FILE="${SOFAGENT_DATA}/think.archive.md"
 
@@ -89,7 +89,9 @@ if [ "$DRY_RUN" = true ]; then
   info "=== 预览：条目统计 ==="
   
   # 统计反思条目数（以 ## 开头的日期行）
-  ENTRY_COUNT=$(grep -c '^## 20' "$THINK_FILE" 2>/dev/null || echo "0")
+  # grep -c 无匹配时输出 "0" 并 exit 1，`|| echo "0"` 会再追加一个 "0" → "0\n0"；
+  # 改用 `|| true` + 缺省值，避免双零（008 同类）
+  ENTRY_COUNT=$(grep -c '^## 20' "$THINK_FILE" 2>/dev/null || true); ENTRY_COUNT=${ENTRY_COUNT:-0}
   echo "  反思条目: ${ENTRY_COUNT}"
   
   # 统计标签分布
@@ -102,10 +104,11 @@ if [ "$DRY_RUN" = true ]; then
   # 检查 60 天前条目
   SIXTY_DAYS_AGO=$(date -v-60d +%Y-%m-%d 2>/dev/null || date -d '60 days ago' +%Y-%m-%d 2>/dev/null || echo "")
   if [ -n "$SIXTY_DAYS_AGO" ]; then
-    OLD_COUNT=$(grep -c "^## 20" "$THINK_FILE" 2>/dev/null | while IFS= read -r line; do
+    OLD_COUNT=$(grep "^## 20" "$THINK_FILE" 2>/dev/null | while IFS= read -r line; do
       date_str=$(echo "$line" | grep -o '[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}' | head -1)
       [ -n "$date_str" ] && [ "$date_str" '<' "$SIXTY_DAYS_AGO" ] && echo "1"
     done | wc -l | tr -d ' ')
+    OLD_COUNT=${OLD_COUNT:-0}
     echo "  60 天前条目: ${OLD_COUNT}（将移至 think.archive.md）"
   fi
   

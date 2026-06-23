@@ -149,7 +149,7 @@ fi
 if [ "$IS_CLOSURE_CHECK" = true ]; then
   TODAY=$(date +"%Y-%m-%d")
   MONTH=$(date +"%Y-%m")
-  LOG_DIR="${PWD}/.sofagent/task/logs/${MONTH}"
+  LOG_DIR="${SOFAGENT_DATA}/task/logs/${MONTH}"
   LOG_FILE="${LOG_DIR}/${TODAY}.md"
   if [ -f "$LOG_FILE" ]; then
     COUNT=$(grep -c "^## " "$LOG_FILE" 2>/dev/null || true); COUNT=${COUNT:-0}
@@ -161,7 +161,7 @@ if [ "$IS_CLOSURE_CHECK" = true ]; then
 fi
 
 # ── 路径 ──
-SOFAGENT_DATA="${PWD}/.sofagent"
+SOFAGENT_DATA="${SOFAGENT_DATA:-${PWD}/.sofagent}"
 TODAY=$(date +"%Y-%m-%d")
 MONTH=$(date +"%Y-%m")
 LOG_DIR="${SOFAGENT_DATA}/task/logs/${MONTH}"

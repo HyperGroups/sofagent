@@ -62,7 +62,7 @@ fi
 case "$PLATFORM" in
   openclaw) TARGET="${OPENCLAW_STATE_DIR:-$HOME/.openclaw}" ;;
   workbuddy)
-    SOFAGENT_DATA="${PWD}/.sofagent"
+    SOFAGENT_DATA="${SOFAGENT_DATA:-${PWD}/.sofagent}"
     echo "WorkBuddy 平台——准备清理 sofagent 部署文件"
     echo ""
     removed=0
@@ -135,7 +135,7 @@ case "$PLATFORM" in
 esac
 
 OPENCLAW_DIR="$TARGET"  # 保持变量名兼容
-SOFAGENT_DATA="${PWD}/.sofagent"
+SOFAGENT_DATA="${SOFAGENT_DATA:-${PWD}/.sofagent}"
 
 echo ""
 echo "  ╔═══════════════════════════════════╗"

@@ -80,7 +80,7 @@ LOCAL_DATE=$(date +"%Y-%m-%d")
 LOCAL_MONTH=$(date +"%Y-%m")
 
 # ── 路径 ──
-SOFAGENT_DATA="${PWD}/.sofagent"
+SOFAGENT_DATA="${SOFAGENT_DATA:-${PWD}/.sofagent}"
 AUDIT_DIR="${SOFAGENT_DATA}/task/audit/${LOCAL_MONTH}"
 AUDIT_FILE="${AUDIT_DIR}/${LOCAL_DATE}.md"
 

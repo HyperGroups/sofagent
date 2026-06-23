@@ -203,7 +203,7 @@ analyze_track_record() {
   local total=0 success=0
   # 搜索 task/logs 中匹配的记录
   shopt -s nullglob 2>/dev/null || true
-  for logfile in "${SOFAGENT_DATA}"/task/logs/*/*/*.md; do
+  for logfile in "${SOFAGENT_DATA}"/task/logs/*/*.md; do
     [ -f "$logfile" ] || continue
     grep -q "$slug" "$logfile" 2>/dev/null || continue
     while IFS= read -r line; do
@@ -220,7 +220,7 @@ analyze_track_record() {
 sliding_window_rollback() {
   local slug="$1" current_level="$2" success_count=0 total=0
   shopt -s nullglob 2>/dev/null || true
-  for logfile in "${SOFAGENT_DATA}"/task/logs/*/*/*.md; do
+  for logfile in "${SOFAGENT_DATA}"/task/logs/*/*.md; do
     [ -f "$logfile" ] || continue
     # 用 awk 提取匹配任务的执行状态行，支持 bash/sh 无引号转义
     awk -v task="$TASK_DESC" '

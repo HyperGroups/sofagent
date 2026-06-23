@@ -60,7 +60,15 @@ while [[ $# -gt 0 ]]; do
       fi
       shift 2
       ;;
-    --before=*) BEFORE_DATE="${1#*=}"; FORCE=true; shift ;;
+    --before=*)
+      BEFORE_DATE="${1#*=}"
+      # 等号式与空格式行为一致：校验日期格式，且不隐含 FORCE（023 修复）
+      if ! echo "$BEFORE_DATE" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+        echo "[cleanup] 错误：--before 需要日期格式 YYYY-MM-DD（收到：${BEFORE_DATE}）"
+        exit 1
+      fi
+      shift
+      ;;
     --version) echo "sofagent-cleanup v${VERSION}"; exit 0 ;;
     --help)    SHOW_HELP=true; shift ;;
     *) echo "未知参数: $1（--help 查看用法）"; exit 1 ;;
@@ -96,8 +104,9 @@ RETENTION_DAYS="${SOFA_RETENTION_DAYS:-90}"
 RETENTION_MAX="${SOFA_RETENTION_MAX:-500}"
 
 # ── 路径 ──
-LOGS_DIR="${PWD}/.sofagent/task/logs"
-ARCHIVE_DIR="${PWD}/.sofagent/task/logs/archive"
+SOFAGENT_DATA="${SOFAGENT_DATA:-${PWD}/.sofagent}"
+LOGS_DIR="${SOFAGENT_DATA}/task/logs"
+ARCHIVE_DIR="${SOFAGENT_DATA}/task/logs/archive"
 
 # ── glob 安全检查 ──
 if [ ! -d "$LOGS_DIR" ]; then

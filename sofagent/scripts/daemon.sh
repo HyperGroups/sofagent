@@ -18,8 +18,8 @@ VERSION="0.84"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." 2>/dev/null && pwd || echo "$PWD")"
 
-# daemon 在项目根目录运行，数据目录也在根目录下
-SOFAGENT_DATA="${REPO_ROOT}/.sofagent"
+# daemon 在项目根目录运行，数据目录也在根目录下；honor SOFAGENT_DATA 环境变量
+SOFAGENT_DATA="${SOFAGENT_DATA:-${REPO_ROOT}/.sofagent}"
 DAEMON_JSON="${SOFAGENT_DATA}/daemon.json"
 DAEMON_LOG="${SOFAGENT_DATA}/daemon.log"
 DAEMON_PID_FILE="${SOFAGENT_DATA}/daemon.pid"

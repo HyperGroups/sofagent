@@ -16,7 +16,8 @@ set -euo pipefail
 VERSION="0.84"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SOFAGENT_DATA="${PWD}/.sofagent"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." 2>/dev/null && pwd || echo "$PWD")"
+SOFAGENT_DATA="${REPO_ROOT}/.sofagent"
 DAEMON_JSON="${SOFAGENT_DATA}/daemon.json"
 DAEMON_PID_FILE="${SOFAGENT_DATA}/daemon.pid"
 
