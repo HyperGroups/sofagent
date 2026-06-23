@@ -47,7 +47,8 @@ REMOTE_MODE="${REMOTE_MODE:-0}"
 # ── 环境检测（区分 WSL/Windows/Linux/macOS）──
 _detect_env() {
   local env_name="unknown"
-  if [ -n "${WSL_DISTRO_NAME:-}" ] || [ -n "${WSLENV:-}" ]; then
+  if [ -n "${WSL_DISTRO_NAME:-}" ]; then
+    # 仅认 WSL_DISTRO_NAME——WSLENV 在装了 WSL 的 Windows 主机上也会被设，不能作判据
     env_name="WSL (${WSL_DISTRO_NAME:-unknown})"
   elif [ -n "${MSYSTEM:-}" ]; then
     env_name="MSYS2/Git Bash ($MSYSTEM)"

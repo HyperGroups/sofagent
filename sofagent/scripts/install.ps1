@@ -62,8 +62,8 @@ Write-Host "  |   (Windows PowerShell)            |"
 Write-Host "  +===================================+"
 Write-Host ""
 
-# 检测是否在 WSL 中运行（WSL 下 PowerShell 不应使用此脚本）
-if ($env:WSL_DISTRO_NAME -or $env:WSLENV) {
+# 检测是否在 WSL 中运行（仅认 WSL_DISTRO_NAME——WSLENV 在装了 WSL 的 Windows 主机上也会被设，不能作判据）
+if ($env:WSL_DISTRO_NAME) {
     Write-Err "检测到 WSL 环境，请使用 install.sh (bash) 而非本脚本"
     Write-Warn "  bash sofagent/scripts/install.sh --platform workbuddy"
     exit 1
@@ -200,7 +200,11 @@ if ($copied -gt 0) {
 # ════════════════════════════════════════
 Write-Info "Step 3/4 · 部署宪法文件 → $TARGET\rules.md"
 
-$rulesSrc = Join-Path $SKILL_SRC_DIR "constitution\rules.md"
+# v0.73 起 rules.md 扁平化到 sofagent/rules.md；旧布局 fallback 到 constitution/rules.md
+$rulesSrc = Join-Path $SKILL_SRC_DIR "rules.md"
+if (-not (Test-Path $rulesSrc)) {
+    $rulesSrc = Join-Path $SKILL_SRC_DIR "constitution\rules.md"
+}
 $rulesDst = Join-Path $TARGET "rules.md"
 
 if (Test-Path $rulesSrc) {
