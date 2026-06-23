@@ -6,7 +6,7 @@
 >
 > 各节按 Handbook 章节顺序排列，方便两边对照着读。
 >
-> > v0.82 · 2026-06-22 · 孔放勋
+> > v0.84 · 2026-06-22 · 孔放勋
 
 <img src="images/sofagent.png" alt="sofagent" width="300" />
 
@@ -119,9 +119,9 @@ Claude Code 的 `/goal` 是 Loop Engineering 的雏形——设一个目标，Ag
 
 sofagent 的四份核心文档有硬性行数上限：Handbook ≤500 行 / Developer ≤600 行 / Design ≤600 行 / README ≤250 行。新增章节前必须先删一段旧内容——不是"加一点就好"，是"加了就得减一点"。文档膨胀会让 Agent 上下文变重，也会让用户读不下去。这条原则和 500 字原则（[§二](#500-char)）同源——都是把信息密度做到极致。
 
-### 外部研究印证（2026-06-19）
+### 外部研究印证（2026-06-19 / 2026-06-22 更新）
 
-sofagent 的三个核心设计选择，在独立研究中得到了方向性印证：
+sofagent 的核心设计选择，在独立研究中得到了方向性印证：
 
 | 我们的设计 | 外部验证（定性） | 来源 |
 |------|------|------|
@@ -129,9 +129,67 @@ sofagent 的三个核心设计选择，在独立研究中得到了方向性印�
 | 宪法内联 + 子 Skill 按需加载的分层架构 | Skill Reducer 实证：核心规则仅占技能一小部分，分层架构能显著降低 token 占用、保持质量。"结构感知是技能压缩的关键。" | Skill Reducer（港科大/清华/浙工大） |
 | 闭环反思 + Loop Agent | Self Harness 四层模型（执行→留痕→提案→晋升验证），在 Terminal Bench 2.0 上分离评审后通过率显著提升。"Agent 可以提议修改，但不能自己批准。" | Self Harness（上海 AI Lab） |
 
-> ⚠️ **诚实声明**：以上为各研究在自己实验条件下的定性结论，sofagent 核心效果尚未实测（见 §三「核心效果未实测」）。Self Harness / Skill Reducer 的具体百分比数字是它们在各自实验集上的结果，不代表 sofagent 能达到相同效果——sofagent 的 OpenClaw 路径有工程隔离（session.spawn），可类比引用；非 OpenClaw 路径只有 prompt 级约束，不引用具体数字。Self Harness / Skill Reducer 的论文链接待补（致谢表其他引用均有 arXiv 号，这两篇暂缺，欢迎补充）。
+> ⚠️ **诚实声明**：以上为各研究在自己实验条件下的定性结论。Self Harness / Skill Reducer 的具体百分比数字是它们在各自实验集上的结果，不代表 sofagent 能达到相同效果——sofagent 的 OpenClaw 路径有工程隔离（session.spawn），可类比引用；非 OpenClaw 路径只有 prompt 级约束，不引用具体数字。Self Harness / Skill Reducer 的论文链接待补（致谢表其他引用均有 arXiv 号，这两篇暂缺，欢迎补充）。
 
 这些不是我们引用外部研究来证明自己正确——而是两个完全独立的团队，从不同起点出发，得出了方向重叠的结论。
+
+#### Loop Engineering 五大组件 + Memory 对照（2026-06-22）
+
+Addy Osmani 的 Loop Engineering 框架定义了五大组件 + Memory。sofagent 的对应实现：
+
+| Loop 组件 | 定义 | sofagent 对应 | 状态 |
+|------|------|------|:----:|
+| Automations | Agent 什么时候触发 | engine.md A 段场景检测 | ⚠️ 只有会话启动，无定时 |
+| Connectors | 接入业务系统 | 明确不做（文件系统就是接口） | ✅ 设计决策 |
+| Worktrees | 多 Agent 文件隔离 | git worktree（见 §二） | ✅ |
+| Skills | 做事依据什么 SOP | SKILL.md 宪法 + rules.md | ✅ |
+| Sub-agents | 运动员 ≠ 裁判 | Loop Agent 三节点 + session.spawn | ✅ |
+| Memory | 如何不失忆 | think.md + task/logs | ✅ |
+
+6 件覆盖 5 件。唯一缺的是定时触发（Automations 的 cron 级），LIMITATIONS 已标注——等 Agent 平台支持 schedule/cron。
+
+**三个设计盲区**（来自 2026-06-22 Loop Engineering 系列研究笔记，进 ROADMAP v0.9）：
+
+| 盲区 | 研究发现 | sofagent 现状 | 改进方向 |
+|------|------|------|------|
+| **多智能体必要性评估** | 单 AI vs 多智能体成本差 15 倍；多智能体内部架构不同再差 10 倍——最贵 vs 最便宜差 100 倍 | engine.md A3 只判断风险边界，没判断「真的需要多智能体吗」 | A3 前加前置判断 |
+| **验证器姿态：反驳层** | Bun 迁移案例（75 万行 Zig→Rust，测试通过率 99.8%）核心是「假设你错了，你来自证」 | loop-check 是「检查对错」，不是「假设错误要求自证」 | 闭环模式强化为反驳层 |
+| **成本可视化** | 多智能体仪表盘——每个 AI 调了几次、烧了多少 token、有没有卡死循环 | 数据在 task/logs 里但无展示层 | bash 脚本输出 token/循环/失败率汇总 |
+
+#### 检查标准不可篡改性：门不仅要独立，还要焊死（2026-06-22）
+
+Loop Engineering 的第一原则是「执行者和检查者分离」（sofagent 用 session.spawn 实现）。**第二原则更深**：检查用的「尺子」本身不能被篡改——否则独立监考老师也会批出满分卷，因为标准答案已被学生偷偷改了。
+
+> 「Agent 不在耍心眼，它只是在你给的规则里找最省力的那条路。你说目标是把 CI 跑绿，它就去找把 CI 跑绿的最短路径——删掉报错测试比排查调用链快得多。」
+
+四个风险点对照 sofagent：
+
+| 风险 | 笔记描述 | sofagent 对应 | 现有防御 |
+|------|------|------|------|
+| 改断言 | 开发者改旧断言匹配错误行为 | Agent 覆盖式写入 think.md（改写历史） | think.md 置信度渐进 + 30 天衰减 |
+| 删测试 | 删失败测试比修 bug 便宜 | scoring/ 降分不如直接删记录 | scoring 只追加不删除（设计意图） |
+| 跳规则 | 加 `lint-ignore` 绕过检查 | Agent 跳过闭合清单步骤 | 软约束，无 Hook 级硬拦截 |
+| 降标准 | 覆盖率从 90% 降到 80% | LLM 自评给自己打高分 | verify-evidence.sh 查 exit code（硬门） |
+
+**设计启示**：sofagent 的 verify-evidence.sh（bash 查 task/logs 里的 exit code）正是「用硬的东西做门」的方向——测试能过就是能过，不能过就是不能过，一段自信的文字说服不了它。v0.9 的外部评估器要延续这个原则：**用确定性工具做门，别用另一个 Agent**。
+
+#### 循环反噬风险：理解债与认知投降（2026-06-22）
+
+> 前 4 篇 Loop Engineering 研究覆盖了循环的「前期搭建」（5 组件框架、TDD 节奏）和「中期运行」（对抗性验证、检查标准不可篡改）。第 5 篇补充了**后期反噬**——循环跑久了会出现两种系统性风险，它们不阻止你搭建循环，但会在 3-6 个月后侵蚀项目掌控力。
+
+**理解债循环**（Comprehension Debt Loop）：循环交付代码越快，仓库内容和人类认知差距越大。AI 写的代码没人逐行读过，等出 bug 要调试时，发现全组没人理解这个系统。这不是普通的代码债——技术债还能重构，认知债只能重写。
+
+> 笔记原文：「交付代码越快，仓库里的内容和你脑子里懂的内容差距就越大，哪天要调试全组没人读过的系统，成本高到难以想象。」
+
+对 sofagent 的指导：think.md 是减债工具（每次任务记录决策和教训），但**减债不等于消债**——反思条目只记录 Agent 当时的理解，不等于人类真正理解了代码。需要补充定期人工 review 机制：think.md 累积 ≥10 条时提醒人类抽查，循环产出物（生成的代码/文档）每月人工抽检 ≥1 次。已进 ROADMAP v0.9。
+
+**认知投降**（Cognitive Surrender）：长期依赖循环后丧失独立判断能力。循环说"已验证通过"，你信了；循环说"架构应该这样改"，你改了。时间久了你不再判断循环的输出是否正确——你只是转发它的结论。
+
+> 笔记原文：「时间久了，你懒得自己判断，循环说什么就是什么，完全丧失对项目的掌控权。」
+
+对 sofagent 的指导：TDD 模式的「用户 Review 测试用例」环节是当前唯一的防线（只看中文注释确认需求，门槛低但保持参与）。但标准 SOP 没有这个环节。需要补充：高风险决策（架构变更 / 数据库迁移 / 安全相关 / 删除操作）强制人工确认 + 单任务循环深度设上限（最多 3 轮编排，超限强制人工介入）。已进 ROADMAP v0.9。
+
+**两个风险的关系**：理解债是"你不懂 AI 写的代码"，认知投降是"你不再判断 AI 写的代码对不对"。前者是知识层面的差距，后者是能力层面的退化。理解债可以通过 review 缩小，认知投降只能通过保持参与来预防——一旦退化了，很难恢复。
 
 ---
 
@@ -480,7 +538,9 @@ sofagent 站在这些人和作品的基础上：
 | **Nelson F. Liu et al.** | *Lost in the Middle*（2023）——LLM 对长上下文中间段注意力衰减的研究，500 字原则和加载链顺序的科学依据 | [arXiv 2307.03172](https://arxiv.org/abs/2307.03172) |
 | **Matt Pocock** | 调试方法论——输入/环境/工具/模型四维度系统性排查（Diagnosing Box），loop-check 验收闸的排查框架 | [github.com/mattpocock/skills](https://github.com/mattpocock/skills) |
 | **徐远哲 · Ledger-Views-Policy 三件套** | Agent Memory 架构最小形态：Raw Ledger（权威账本）+ Derived Views（派生视图）+ Policy（控制策略）——sofagent 记忆架构（task/logs + think.md + 权重门禁）的理论参照 | [Agent Memory 架构思考](https://xuyuanzhe.github.io/blog/2026/agent-memory-architecture/) |
-| **Microsoft Research · SkillOpt** | 把 Skill 文档当模型「外部状态」训练的方法论——rollout → reflect → edit → gate 四步循环。文本学习率 + Held-out Gate + 拒绝缓冲区三原则启发 sofagent v0.9 Skill 自进化（纯 MD + scoring 实现，不引入代码依赖） | [SkillOpt 论文](https://arxiv.org/abs/2605.06614) |
+| **Microsoft Research · SkillOpt** | 把 Skill 文档当模型「外部状态」训练的方法论——rollout → reflect → edit → gate 四步循环。文本学习率 + Held-out Gate + 拒绝缓冲区三原则启发 sofagent v0.9 Skill 自进化（纯 MD + scoring 实现，不引入代码依赖） | [arXiv 2605.23904](https://arxiv.org/abs/2605.23904) |
+| **Addy Osmani · Loop Engineering** | Loop Engineering 五大组件架构（Automations / Connectors / Worktrees / Skills / Sub-agents + Memory）、语义化停止条件、三盆冷水——sofagent 六件覆盖五件的对照参照 | [Loop Engineering 原文](https://addyo.substack.com/p/loop-engineering) |
+| **多智能体成本研究** | 单 AI vs 多智能体成本差 15 倍，多智能体内部架构差异再差 10 倍——成本差 100 倍的底层逻辑。启发 v0.9 多智能体必要性评估 | [虎嗅：多智能体 AI 系统成本控制深度解析](https://www.huxiu.com/article/4868924.html) |
 
 ---
 

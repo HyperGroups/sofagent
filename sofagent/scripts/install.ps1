@@ -195,6 +195,28 @@ if ($copied -gt 0) {
     Write-Ok "Skill 文件全部就绪（无变更）"
 }
 
+# v0.84: SKILL.md 部署后确保 disable: true（防止安装副本被平台自动加载）
+$deployedSkill = Join-Path $SKILL_DST "SKILL.md"
+if (Test-Path $deployedSkill) {
+    $skillLines = Get-Content $deployedSkill -Encoding UTF8
+    if (-not ($skillLines | Where-Object { $_ -match '^disable:' })) {
+        $hasDisplay = [bool]($skillLines | Where-Object { $_ -match '^displayName:' })
+        $anchorRe = if ($hasDisplay) { '^displayName:' } else { '^name:' }
+        $outLines = New-Object System.Collections.Generic.List[string]
+        $inserted = $false
+        foreach ($ln in $skillLines) {
+            $outLines.Add($ln)
+            if (-not $inserted -and $ln -match $anchorRe) {
+                $outLines.Add('disable: true')
+                $inserted = $true
+            }
+        }
+        # .md 不写 BOM（BOM 在首行 --- 前会破坏 frontmatter 解析），保持 LF
+        [System.IO.File]::WriteAllText($deployedSkill, (($outLines -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding $false))
+        Write-Ok "SKILL.md 安装副本已置 disable: true"
+    }
+}
+
 # ════════════════════════════════════════
 # Step 2.5: 部署 .ps1 运行时脚本（供 {OPENCLAW_SCRIPTS} 在部署后解析）
 # ════════════════════════════════════════

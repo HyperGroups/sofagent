@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# sofagent daemon.sh · daemon 主进程 · v0.82
+# sofagent daemon.sh · daemon 主进程 · v0.84
 # ============================================================
 # 命令行接口：start / stop / status / --foreground
 # 主循环每 30 秒：检测平台进程 + 文件 hash 变化 → 更新 daemon.json
@@ -13,7 +13,7 @@
 # ============================================================
 
 set -euo pipefail
-VERSION="0.82"
+VERSION="0.84"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." 2>/dev/null && pwd || echo "$PWD")"
@@ -64,9 +64,8 @@ JSONEOF
 
 # ── 查找 think.md 和 rules.md ──
 _find_think() {
-  for f in "${REPO_ROOT}/.sofagent/think.md"; do
-    [ -f "$f" ] && { echo "$f"; return 0; }
-  done
+  local f="${REPO_ROOT}/.sofagent/think.md"
+  [ -f "$f" ] && { echo "$f"; return 0; }
   echo ""
 }
 

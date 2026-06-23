@@ -68,7 +68,7 @@ fi
 # set -o pipefail: 管道中任一命令失败都计为失败，防止 `grep | wc` 等忽略中间错误
 set -euo pipefail
 
-VERSION="0.82"
+VERSION="0.84"
 
 # ── 确定脚本目录 ──
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -164,7 +164,7 @@ echo ""
 bash "${SCRIPT_DIR}/audit.sh" --operation "orchestrate" --target "${TASK_DESC}" --result "开始, L${LEVEL}" 2>/dev/null || true
 
 # ── 生成任务唯一标识 ──
-# 修复：shasum 缺失时用 sha256sum 回退（与 load-chain.sh hash_stdin 对齐）
+# shasum 缺失时回退 sha256sum（Alpine/精简 Linux 无 shasum，否则 TASK_SLUG 恒为 unknown）
 TASK_SLUG=$(echo "$TASK_DESC" | { shasum -a 256 2>/dev/null || sha256sum 2>/dev/null; } | cut -c1-8 || echo "unknown")
 
 # ── 读取 orchestrator/ 配置（如果存在）──

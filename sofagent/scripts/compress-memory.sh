@@ -20,7 +20,7 @@
 
 set -euo pipefail
 
-VERSION="0.82"
+VERSION="0.84"
 
 # ── 确定脚本目录 + 加载配置 ──
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -150,8 +150,8 @@ if [ -n "$SIXTY_DAYS_AGO" ]; then
   TMP_ARCHIVE_ADD="${TMPDIR:-/tmp}/sofagent-think-archive-add-$$.md"
   
   # 提取 60 天前的条目到归档，保留近 60 天条目
-  > "$TMP_ACTIVE"
-  > "$TMP_ARCHIVE_ADD"
+  : > "$TMP_ACTIVE"
+  : > "$TMP_ARCHIVE_ADD"
   
   CURRENT_BLOCK=""
   CURRENT_DATE=""
