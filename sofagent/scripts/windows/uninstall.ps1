@@ -19,7 +19,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$VERSION = "0.82"
+$VERSION = "0.84"
 
 function Write-Info { param($msg) Write-Host "[sofagent] $msg" -ForegroundColor Cyan }
 function Write-Ok   { param($msg) Write-Host "[OK] $msg" -ForegroundColor Green }
@@ -30,7 +30,7 @@ function Write-Err  { param($msg) Write-Host "[X] $msg" -ForegroundColor Red }
 if ($Help) {
     Write-Host "sofagent uninstall.ps1 v$VERSION"
     Write-Host ""
-    Write-Host "Windows PowerShell 卸载脚本 (WorkBuddy / OpenClaw on Windows)"
+    Write-Host "Windows PowerShell 卸载脚本 (workbuddy/openclaw/claude/codex/hermes)"
     Write-Host ""
     Write-Host "用法:"
     Write-Host "    .\uninstall.ps1 -Platform workbuddy"
@@ -38,7 +38,7 @@ if ($Help) {
     Write-Host "    .\uninstall.ps1 -List       仅列出将删除项，不执行"
     Write-Host ""
     Write-Host "参数:"
-    Write-Host "    -Platform   目标平台 (workbuddy|openclaw)"
+    Write-Host "    -Platform   目标平台 (workbuddy|openclaw|claude|codex|hermes)"
     Write-Host "    -Force      跳过交互确认"
     Write-Host "    -List       预览将删除的文件"
     Write-Host "    -Help       显示此帮助"
@@ -68,19 +68,21 @@ if (-not $IsWindows -and -not ($env:OS -eq "Windows_NT")) {
 
 # 平台探测
 if ([string]::IsNullOrEmpty($Platform)) {
-    if (Test-Path "$env:USERPROFILE\.workbuddy") {
-        $Platform = "workbuddy"
-    } elseif (Test-Path "$env:USERPROFILE\.openclaw") {
-        $Platform = "openclaw"
-    } else {
-        $Platform = "workbuddy"
-    }
+    if     (Test-Path "$env:USERPROFILE\.workbuddy") { $Platform = "workbuddy" }
+    elseif (Test-Path "$env:USERPROFILE\.openclaw")  { $Platform = "openclaw" }
+    elseif (Test-Path "$env:USERPROFILE\.claude")    { $Platform = "claude" }
+    elseif (Test-Path "$env:USERPROFILE\.codex")     { $Platform = "codex" }
+    elseif (Test-Path "$env:USERPROFILE\.hermes")    { $Platform = "hermes" }
+    else { $Platform = "workbuddy" }
 }
 $Platform = $Platform.ToLower()
 
 switch ($Platform) {
     "workbuddy" { $TARGET = "$env:USERPROFILE\.workbuddy" }
     "openclaw"  { $TARGET = "$env:USERPROFILE\.openclaw" }
+    "claude"    { $TARGET = "$env:USERPROFILE\.claude" }
+    "codex"     { $TARGET = "$env:USERPROFILE\.codex" }
+    "hermes"    { $TARGET = "$env:USERPROFILE\.hermes" }
     default     { $TARGET = "$env:USERPROFILE\.workbuddy" }
 }
 Write-Info "平台: $Platform -> 目标: $TARGET"
@@ -163,8 +165,13 @@ if ($Platform -eq "openclaw") {
             }
         } catch { Write-Warn "config.json 清理失败：$($_.Exception.Message)" }
     }
-    $dUninst = Join-Path $PSScriptRoot "daemon-uninstall.ps1"
-    if (Test-Path $dUninst) { & powershell -NoProfile -ExecutionPolicy Bypass -File $dUninst 2>$null | Out-Null }
+}
+
+# daemon 清理（所有平台——daemon 可经 install.ps1 -WithDaemon 在任意平台安装；无任务时无害）
+$dUninst = Join-Path $PSScriptRoot "daemon-uninstall.ps1"
+if (Test-Path $dUninst) {
+    try { & powershell -NoProfile -ExecutionPolicy Bypass -File $dUninst 2>$null | Out-Null; Write-Ok "已清理 daemon（如有）" }
+    catch {}
 }
 
 Write-Host ""

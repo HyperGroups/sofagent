@@ -20,11 +20,12 @@ param(
     [string]$ProjectDir = "",
     [switch]$NoAO,
     [switch]$NoConfigInject,
+    [switch]$WithDaemon,
     [switch]$Help
 )
 
 $ErrorActionPreference = "Stop"
-$VERSION = "0.82"
+$VERSION = "0.84"
 
 # ── 颜色输出 ──
 function Write-Info  { param($msg) Write-Host "[sofagent] $msg" -ForegroundColor Cyan }
@@ -43,14 +44,21 @@ if ($Help) {
     Write-Host "  .\install.ps1 -Platform workbuddy"
     Write-Host ""
     Write-Host "参数:"
-    Write-Host "  -Platform     目标平台 (workbuddy|openclaw)"
-    Write-Host "  -ProjectDir   项目工作目录（.sofagent/ 数据目录位置）"
-    Write-Host "  -NoAO         跳过 agency-orchestrator 安装"
-    Write-Host "  -Help         显示此帮助"
+    Write-Host "  -Platform        目标平台 (workbuddy|openclaw|claude|codex|hermes)"
+    Write-Host "  -ProjectDir      项目工作目录（.sofagent/ 数据目录位置）"
+    Write-Host "  -NoAO            跳过 agency-orchestrator 安装（仅 openclaw 相关）"
+    Write-Host "  -NoConfigInject  跳过 OpenClaw 断路器 loopDetection 注入"
+    Write-Host "  -WithDaemon      安装后台 daemon（Windows 计划任务，监控 think.md/rules.md）"
+    Write-Host "  -Help            显示此帮助"
+    Write-Host ""
+    Write-Host "平台说明:"
+    Write-Host "  workbuddy  部署 Skill + 数据目录（宪法内联在 SKILL.md）"
+    Write-Host "  openclaw   完整部署（Skill + Hook + 断路器 + ao 编排引擎）"
+    Write-Host "  claude/codex/hermes  部署宪法 + 写入种子指令（CLAUDE.md/AGENTS.md/SOUL.md）"
     Write-Host ""
     Write-Host "环境区分:"
-    Write-Host "  Windows + WorkBuddy  → install.ps1（本脚本）"
-    Write-Host "  WSL / Linux / macOS  → install.sh"
+    Write-Host "  Windows 原生 (PowerShell)  → install.ps1（本脚本）"
+    Write-Host "  WSL / Linux / macOS        → install.sh"
     exit 0
 }
 
@@ -88,13 +96,12 @@ $PROJECT_ROOT = Split-Path -Parent $SKILL_SRC_DIR
 Write-Info "Step 1/4 · 确定安装平台..."
 
 if ([string]::IsNullOrEmpty($Platform)) {
-    if (Test-Path "$env:USERPROFILE\.workbuddy") {
-        $Platform = "workbuddy"
-    } elseif (Test-Path "$env:USERPROFILE\.openclaw") {
-        $Platform = "openclaw"
-    } else {
-        $Platform = "workbuddy"
-    }
+    if     (Test-Path "$env:USERPROFILE\.workbuddy") { $Platform = "workbuddy" }
+    elseif (Test-Path "$env:USERPROFILE\.openclaw")  { $Platform = "openclaw" }
+    elseif (Test-Path "$env:USERPROFILE\.claude")    { $Platform = "claude" }
+    elseif (Test-Path "$env:USERPROFILE\.codex")     { $Platform = "codex" }
+    elseif (Test-Path "$env:USERPROFILE\.hermes")    { $Platform = "hermes" }
+    else { $Platform = "workbuddy" }
 }
 
 $Platform = $Platform.ToLower()
@@ -119,7 +126,10 @@ Write-Ok "数据目录: $SOFAGENT_DATA"
 switch ($Platform) {
     "workbuddy" { $TARGET = "$env:USERPROFILE\.workbuddy" }
     "openclaw"  { $TARGET = "$env:USERPROFILE\.openclaw" }
-    default     { $TARGET = "$env:USERPROFILE\.workbuddy" }
+    "claude"    { $TARGET = "$env:USERPROFILE\.claude" }
+    "codex"     { $TARGET = "$env:USERPROFILE\.codex" }
+    "hermes"    { $TARGET = "$env:USERPROFILE\.hermes" }
+    default     { Write-Warn "未知平台 '$Platform'，回退 workbuddy"; $Platform = "workbuddy"; $TARGET = "$env:USERPROFILE\.workbuddy" }
 }
 
 Write-Ok "平台: $Platform → 目标: $TARGET"
@@ -286,6 +296,41 @@ if (-not (Test-Path $SOFAGENT_DATA)) {
 }
 
 # ════════════════════════════════════════
+# Step 5a（仅 OpenClaw）：安装 ao 编排引擎（对齐 install.sh Step 3，受 -NoAO 控）
+# ════════════════════════════════════════
+if ($Platform -eq "openclaw" -and -not $NoAO) {
+    Write-Info "OpenClaw · 安装编排引擎 agency-orchestrator..."
+    if (Get-Command ao -ErrorAction SilentlyContinue) {
+        $aoVer = (& ao --version 2>$null); if (-not $aoVer) { $aoVer = "unknown" }
+        Write-Ok "agency-orchestrator 已安装: $aoVer"
+    } elseif (Get-Command npm -ErrorAction SilentlyContinue) {
+        Write-Info "正在安装 agency-orchestrator@0.7.5（npm -g）..."
+        & npm install -g agency-orchestrator@0.7.5 2>&1 | Select-Object -Last 1
+        if (-not (Get-Command ao -ErrorAction SilentlyContinue)) {
+            & npm install -g agency-orchestrator@0.7.5 --registry=https://registry.npmmirror.com 2>&1 | Select-Object -Last 1
+        }
+        if (Get-Command ao -ErrorAction SilentlyContinue) {
+            Write-Ok "agency-orchestrator 安装成功"
+        } else {
+            Write-Warn "ao 未在 PATH 找到——可能需重开终端。编排引擎不可用，地基约束层不受影响。"
+        }
+    } else {
+        Write-Warn "npm 不可用，跳过 ao 安装。编排引擎不可用，地基约束层（宪法/反思/规则）正常。"
+    }
+    # API Key 检查
+    if (Get-Command ao -ErrorAction SilentlyContinue) {
+        $keyFound = if ($env:DEEPSEEK_API_KEY) { "DeepSeek" } elseif ($env:ANTHROPIC_API_KEY) { "Claude" } elseif ($env:OPENAI_API_KEY) { "OpenAI" } else { "" }
+        if ($keyFound) { Write-Ok "AO API Key 已配置 ($keyFound)" }
+        else {
+            Write-Warn "AO 已装但未配置模型 API Key——编排功能不可用"
+            Write-Warn '  设置（任选其一）: $env:DEEPSEEK_API_KEY / $env:ANTHROPIC_API_KEY / $env:OPENAI_API_KEY'
+        }
+    }
+} elseif ($Platform -eq "openclaw" -and $NoAO) {
+    Write-Warn "(-NoAO) 跳过 agency-orchestrator 安装。编排引擎不可用，地基约束层不受影响。"
+}
+
+# ════════════════════════════════════════
 # Step 5（仅 OpenClaw）：部署加载链 Hook + 注入断路器（对齐 install.sh Step 6/7）
 # ════════════════════════════════════════
 if ($Platform -eq "openclaw") {
@@ -335,6 +380,51 @@ if ($Platform -eq "openclaw") {
 }
 
 # ════════════════════════════════════════
+# Step 5b（claude/codex/hermes）：写入种子指令（对齐 install.sh 手动平台段）
+# ════════════════════════════════════════
+$SEED_FILE = ""
+if ($Platform -in @("claude", "codex", "hermes")) {
+    $seedMap = @{
+        claude = @{ file = "CLAUDE.md"; rules = "$env:USERPROFILE\.claude\rules.md" }
+        codex  = @{ file = "AGENTS.md"; rules = "$env:USERPROFILE\.codex\rules.md" }
+        hermes = @{ file = "SOUL.md";   rules = "$env:USERPROFILE\.hermes\rules.md" }
+    }
+    $SEED_FILE  = Join-Path $TARGET $seedMap[$Platform].file
+    $seedRules  = $seedMap[$Platform].rules
+    $seedContent = @(
+        "每次对话开始时，读取以下文件并执行 sofagent 入口流程：",
+        "1. rules.md：$seedRules（宪法已在 SKILL.md 内联）",
+        "2. 如果工作目录含 .sofagent/ 数据文件，加载记忆和反思",
+        "如果数据文件（.sofagent/）不存在，先创建空模板。"
+    ) -join "`r`n"
+    if ((Test-Path $SEED_FILE) -and (Select-String -Path $SEED_FILE -Pattern 'sofagent' -Quiet)) {
+        Write-Ok "种子指令已存在于 $SEED_FILE，跳过写入"
+    } else {
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $SEED_FILE) | Out-Null
+        $existing = if (Test-Path $SEED_FILE) { [System.IO.File]::ReadAllText($SEED_FILE) } else { "" }
+        # 追加不覆盖；UTF-8 无 BOM
+        [System.IO.File]::WriteAllText($SEED_FILE, ($existing + "`r`n" + $seedContent + "`r`n"), (New-Object System.Text.UTF8Encoding $false))
+        Write-Ok "种子指令已写入 $SEED_FILE"
+    }
+}
+
+# ════════════════════════════════════════
+# Step 6（可选）：daemon 后台进程（Windows 计划任务，-WithDaemon 开启）
+# ════════════════════════════════════════
+# 注：install.sh 在 Windows 上跳过 daemon（用 launchd/systemd）；本 .ps1 的 daemon 原生支持
+# Windows（Register-ScheduledTask），故这里提供 -WithDaemon 开关。
+if ($WithDaemon) {
+    Write-Info "安装 daemon（Windows 计划任务，监控 think.md/rules.md 变化）..."
+    $daemonInstall = Join-Path $SCRIPT_DIR "daemon-install.ps1"
+    if (Test-Path $daemonInstall) {
+        try { & powershell -NoProfile -ExecutionPolicy Bypass -File $daemonInstall }
+        catch { Write-Warn "daemon 安装失败：$($_.Exception.Message)（可稍后手动运行 daemon-install.ps1）" }
+    } else { Write-Warn "找不到 daemon-install.ps1，跳过" }
+} else {
+    Write-Info "(未加 -WithDaemon) 跳过 daemon。需后台监控可加 -WithDaemon 或手动 daemon-install.ps1"
+}
+
+# ════════════════════════════════════════
 # 安装完成
 # ════════════════════════════════════════
 Write-Host ""
@@ -342,13 +432,25 @@ Write-Host "  +====================================+"
 Write-Host "  |  sofagent · 安装完成！             |"
 Write-Host "  +====================================+"
 Write-Host ""
+Write-Host "  平台: $Platform"
 Write-Host "  已部署文件："
 Write-Host "    Skill 文件:  $SKILL_DST"
 Write-Host "    宪法文件:    $rulesDst"
 Write-Host "    数据目录:    $SOFAGENT_DATA"
+if ($Platform -eq "openclaw") {
+    Write-Host "    加载链 Hook: $TARGET\hooks\sofagent-load-chain\"
+}
+if ($SEED_FILE) {
+    Write-Host "    种子指令:    $SEED_FILE"
+}
 Write-Host ""
 Write-Host "  下一步："
-Write-Host "    1. 在 WorkBuddy 中打开项目: $ProjectDir"
-Write-Host "    2. 开始新对话，sofagent Skill 应自动加载"
-Write-Host "    3. 回复 'sofagent' 验证是否加载成功"
+if ($Platform -in @("claude", "codex", "hermes")) {
+    Write-Host "    1. 种子指令已写入 $SEED_FILE"
+    Write-Host "    2. 开始新对话，回复 'sofagent' 验证加载链是否生效"
+} else {
+    Write-Host "    1. 在 $Platform 中打开项目: $ProjectDir"
+    Write-Host "    2. 开始新对话，sofagent Skill 应自动加载"
+    Write-Host "    3. 回复 'sofagent' 验证是否加载成功"
+}
 Write-Host ""

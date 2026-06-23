@@ -43,25 +43,38 @@ cd sofagent
 .\sofagent\scripts\windows\install.ps1 -Platform workbuddy -ProjectDir "D:\my-project"
 ```
 
-平台切换：
+平台切换（**5 个平台全支持**，与 install.sh 对齐）：
 
 ```powershell
 .\sofagent\scripts\windows\install.ps1 -Platform openclaw -ProjectDir "D:\my-project"
+.\sofagent\scripts\windows\install.ps1 -Platform claude  -ProjectDir "D:\my-project"
+.\sofagent\scripts\windows\install.ps1 -Platform codex   -ProjectDir "D:\my-project"
+.\sofagent\scripts\windows\install.ps1 -Platform hermes  -ProjectDir "D:\my-project"
 ```
 
-不传 `-Platform` 时按 `~\.workbuddy` / `~\.openclaw` 是否存在自动探测（都没有则默认 workbuddy）。
+不传 `-Platform` 时按 `~\.workbuddy` / `~\.openclaw` / `~\.claude` / `~\.codex` / `~\.hermes` 顺序自动探测（都没有则默认 workbuddy）。
 
 ### 参数
 
 | 参数 | 说明 | 对应 install.sh |
 |---|---|---|
-| `-Platform <workbuddy\|openclaw>` | 目标平台 | `--platform` |
+| `-Platform <workbuddy\|openclaw\|claude\|codex\|hermes>` | 目标平台 | `--platform` |
 | `-ProjectDir <path>` | `.sofagent\` 数据目录位置（不传则当前目录） | `--project-dir` |
-| `-NoAO` | 跳过 agency-orchestrator 安装 | `--no-ao` |
+| `-NoAO` | 跳过 agency-orchestrator 安装（仅 openclaw 相关） | `--no-ao` |
 | `-NoConfigInject` | 不注入 OpenClaw 断路器 loopDetection | `--no-config-inject` |
+| `-WithDaemon` | 安装后台 daemon（Windows 计划任务，监控 think.md/rules.md） | （install.sh 在 Win 上跳过 daemon） |
 | `-Help` | 显示帮助 | `--help` |
 
-> **OpenClaw 专属**：`-Platform openclaw` 会额外部署加载链 Hook（`sofagent-load-chain`）、在 `openclaw.json` 注册、向 `config.json` 注入 loopDetection 断路器（除非 `-NoConfigInject`）。WorkBuddy 不做这些（无内部 hook 机制）。
+### 各平台做什么
+
+| 平台 | 部署内容 |
+|---|---|
+| **workbuddy** | Skill 文件 + rules.md + .ps1 脚本 + 数据目录（宪法内联在 SKILL.md） |
+| **openclaw** | 上述 + 加载链 Hook（`sofagent-load-chain` 注册到 `openclaw.json`）+ `config.json` 断路器 loopDetection + **自动 `npm i -g agency-orchestrator`**（受 `-NoAO` 控）+ API Key 检查 |
+| **claude / codex / hermes** | 部署宪法到 `~\.<平台>\` + **写入种子指令**到 `CLAUDE.md` / `AGENTS.md` / `SOUL.md`（追加不覆盖，按 `sofagent` 关键词去重） |
+
+> **ao 自动安装**：仅 openclaw 触发；Windows 原生 `npm i -g agency-orchestrator@0.7.5`（无需 WSL）。失败自动回退 npmmirror 源，再失败则降级（地基约束层不受影响）。
+> **daemon**：install.sh 在 Windows 上跳过 daemon（用 launchd/systemd）；本 .ps1 的 daemon 原生支持 Windows（计划任务），故用 `-WithDaemon` 显式开启。卸载时所有平台都会清理 daemon（无任务则无害）。
 
 ## 4. 安装后生成什么
 
