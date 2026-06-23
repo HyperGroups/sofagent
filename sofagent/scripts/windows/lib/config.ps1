@@ -10,7 +10,7 @@
 
 # ── 定位 rules.md（候选路径，对齐 config.sh）──
 function Find-SofaRulesFile {
-    $sofagentRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)  # scripts/lib -> scripts -> sofagent
+    $sofagentRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))  # scripts/windows/lib -> windows -> scripts -> sofagent
     $candidates = @(
         (Join-Path (Get-Location).Path "rules.md"),
         (Join-Path $sofagentRoot "rules.md"),

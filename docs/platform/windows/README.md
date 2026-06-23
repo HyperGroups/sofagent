@@ -23,6 +23,8 @@ install / uninstall / task-record / audit / lib·config / task-orchestrate / ver
 compress-memory / verify-evidence / benchmark / daemon / daemon-install / daemon-status /
 daemon-uninstall / lib·daemon-lib。**14 个 .sh + 2 lib 全部有对应 .ps1**；另加 fork 专属 `ab-eval.ps1`（audit-log A/B 分析，上游无 .sh 对应）。
 
+> **目录布局**：仓库内 `.ps1` 集中在 `sofagent/scripts/windows/`（含 `windows/lib/`），与顶层 `.sofagent/scripts/*.sh` 分开，避免散乱；
+> 部署到平台后仍**扁平**落在 `~/.workbuddy/scripts/`（`.ps1` 与 `.sh` 共存），运行时调用路径不变。
 > 已合并 upstream v0.84；install.ps1 已补 v0.84 新行为（部署后 SKILL.md 置 `disable: true`）。
 > 已知小问题：.ps1 版本号仍标 0.82（落后 .sh 的 0.84），见 `issues/026`，仅展示性。
 

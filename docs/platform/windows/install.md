@@ -32,7 +32,7 @@ Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 或单次运行时绕过（不改全局策略）：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\sofagent\scripts\install.ps1 -Platform workbuddy
+powershell -NoProfile -ExecutionPolicy Bypass -File .\sofagent\scripts\windows\install.ps1 -Platform workbuddy
 ```
 
 ## 3. 安装
@@ -40,13 +40,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\sofagent\scripts\install.p
 ```powershell
 git clone https://github.com/KongFangXun/sofagent.git
 cd sofagent
-.\sofagent\scripts\install.ps1 -Platform workbuddy -ProjectDir "D:\my-project"
+.\sofagent\scripts\windows\install.ps1 -Platform workbuddy -ProjectDir "D:\my-project"
 ```
 
 平台切换：
 
 ```powershell
-.\sofagent\scripts\install.ps1 -Platform openclaw -ProjectDir "D:\my-project"
+.\sofagent\scripts\windows\install.ps1 -Platform openclaw -ProjectDir "D:\my-project"
 ```
 
 不传 `-Platform` 时按 `~\.workbuddy` / `~\.openclaw` 是否存在自动探测（都没有则默认 workbuddy）。
@@ -81,9 +81,9 @@ WorkBuddy 典型结果：
 ## 5. 验证
 
 ```powershell
-.\sofagent\scripts\verify.ps1 -Quick      # 快速
-.\sofagent\scripts\verify.ps1             # 完整
-.\sofagent\scripts\verify.ps1 -Json       # JSON（CI 用）
+.\sofagent\scripts\windows\verify.ps1 -Quick      # 快速
+.\sofagent\scripts\windows\verify.ps1             # 完整
+.\sofagent\scripts\windows\verify.ps1 -Json       # JSON（CI 用）
 ```
 
 首次使用前没有 `think.md` / 任务日志属正常，不算失败。
@@ -101,9 +101,9 @@ bash task-record.sh --task "..."   →   powershell -File task-record.ps1 -Task 
 ## 7. 卸载
 
 ```powershell
-.\sofagent\scripts\uninstall.ps1 -Platform workbuddy           # 交互确认
-.\sofagent\scripts\uninstall.ps1 -Platform workbuddy -Force    # 跳过确认
-.\sofagent\scripts\uninstall.ps1 -Platform workbuddy -List     # 仅预览
+.\sofagent\scripts\windows\uninstall.ps1 -Platform workbuddy           # 交互确认
+.\sofagent\scripts\windows\uninstall.ps1 -Platform workbuddy -Force    # 跳过确认
+.\sofagent\scripts\windows\uninstall.ps1 -Platform workbuddy -List     # 仅预览
 ```
 
 - 保留项目内 `.sofagent\`（任务记录/反思）。需要清除请手动删。
@@ -133,10 +133,10 @@ bash task-record.sh --task "..."   →   powershell -File task-record.ps1 -Task 
 ```powershell
 git clone https://github.com/KongFangXun/sofagent.git ; cd sofagent
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned          # 首次
-.\sofagent\scripts\install.ps1 -Platform workbuddy -ProjectDir "D:\my-project"
-.\sofagent\scripts\verify.ps1 -Quick
+.\sofagent\scripts\windows\install.ps1 -Platform workbuddy -ProjectDir "D:\my-project"
+.\sofagent\scripts\windows\verify.ps1 -Quick
 # 卸载
-.\sofagent\scripts\uninstall.ps1 -Platform workbuddy -Force
+.\sofagent\scripts\windows\uninstall.ps1 -Platform workbuddy -Force
 ```
 
 ## 关联

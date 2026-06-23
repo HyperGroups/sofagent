@@ -43,6 +43,7 @@ metadata:
 > - **纯 Windows PowerShell（非 WSL，无 bash）**：改用 `powershell -File {OPENCLAW_SCRIPTS}/X.ps1 -Flag value`
 >   - 脚本名 `.sh`→`.ps1`；参数 kebab-case→PascalCase：`--closure-check`→`-ClosureCheck`、`--budget`→`-Budget`、`--task`→`-Task`、`--result`→`-Result`、`--steps`→`-Steps`、`--limit`→`-Limit`、`--model`→`-Model`、`--operation`→`-Operation`、`--checkpoint`→`-Checkpoint`、`--from-stdin`→`-FromStdin`
 > - 判断：环境能跑 `bash` 就用 `.sh`；否则（如 Windows 上的 WorkBuddy）用 `.ps1`。两套脚本行为对齐。
+>   - 路径：部署后 `{OPENCLAW_SCRIPTS}` 下 `.ps1` 与 `.sh` **扁平共存**（直接 `{OPENCLAW_SCRIPTS}/X.ps1`）；仓库内未部署时 `.ps1` 在 `sofagent/scripts/windows/`（`.sh` 仍在 `sofagent/scripts/`）。
 
 ---
 

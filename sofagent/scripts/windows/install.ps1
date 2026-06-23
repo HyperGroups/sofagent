@@ -79,8 +79,8 @@ Write-Ok "运行环境: Windows PowerShell"
 
 # ── 确定脚本所在目录 ──
 $SCRIPT_DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
-# scripts/ → sofagent/ (项目内 skill 源码目录)
-$SKILL_SRC_DIR = Split-Path -Parent $SCRIPT_DIR
+# scripts/windows/ → scripts/ → sofagent/ (项目内 skill 源码目录)
+$SKILL_SRC_DIR = Split-Path -Parent (Split-Path -Parent $SCRIPT_DIR)
 # sofagent/ → 项目根目录
 $PROJECT_ROOT = Split-Path -Parent $SKILL_SRC_DIR
 

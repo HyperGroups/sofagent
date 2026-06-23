@@ -12,7 +12,8 @@ $VERSION_STR = "0.82"
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch {}
 
 $daemonPs = Join-Path $PSScriptRoot "daemon.ps1"
-$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+# scripts/windows → scripts → sofagent → 项目根
+$repoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
 $taskName = "sofagentDaemon"
 
 Write-Host "安装 sofagent daemon（Windows 计划任务）..."

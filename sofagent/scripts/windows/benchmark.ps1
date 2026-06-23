@@ -41,7 +41,8 @@ if ($Help) {
 if ([string]::IsNullOrEmpty($Platform)) { Write-Host "错误：需要 -Platform 参数 (workbuddy|openclaw|claude)"; exit 1 }
 $Platform = $Platform.ToLower()
 
-$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+# scripts/windows → scripts → sofagent → 项目根
+$repoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
 if ([string]::IsNullOrEmpty($OutputDir)) { $OutputDir = Join-Path $repoRoot "docs\benchmark" }
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $today = Get-Date -Format "yyyy-MM-dd"
