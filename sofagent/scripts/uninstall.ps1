@@ -19,7 +19,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$VERSION = "1.0.0"
+$VERSION = "0.82"
 
 function Write-Info { param($msg) Write-Host "[sofagent] $msg" -ForegroundColor Cyan }
 function Write-Ok   { param($msg) Write-Host "[OK] $msg" -ForegroundColor Green }
@@ -134,6 +134,37 @@ foreach ($t in $targets) {
     Remove-Item -Recurse -Force $t -ErrorAction SilentlyContinue
     if (-not (Test-Path $t)) { Write-Ok "已删除: $t"; $removed++ }
     else { Write-Err "删除失败: $t" }
+}
+
+# OpenClaw 专属清理：Hook + openclaw.json 注销 + config.json loopDetection + daemon（对齐 uninstall.sh）
+if ($Platform -eq "openclaw") {
+    $utf8b = New-Object System.Text.UTF8Encoding $false
+    $hookDir = Join-Path $TARGET "hooks\sofagent-load-chain"
+    if (Test-Path $hookDir) { Remove-Item $hookDir -Recurse -Force -EA SilentlyContinue; Write-Ok "已删除 Hook: $hookDir" }
+    $ocCfg = if ($env:OPENCLAW_CONFIG_PATH) { $env:OPENCLAW_CONFIG_PATH } else { Join-Path $TARGET "openclaw.json" }
+    if (Test-Path $ocCfg) {
+        try {
+            $j = Get-Content $ocCfg -Raw | ConvertFrom-Json
+            if ($j.hooks -and $j.hooks.internal -and $j.hooks.internal.entries -and $j.hooks.internal.entries.PSObject.Properties['sofagent-load-chain']) {
+                $j.hooks.internal.entries.PSObject.Properties.Remove('sofagent-load-chain')
+                [System.IO.File]::WriteAllText($ocCfg, ($j | ConvertTo-Json -Depth 10), $utf8b)
+                Write-Ok "已注销 openclaw.json 中的 sofagent-load-chain"
+            }
+        } catch { Write-Warn "openclaw.json 注销失败：$($_.Exception.Message)" }
+    }
+    $cfgFile = if ($env:OPENCLAW_CONFIG_PATH) { $env:OPENCLAW_CONFIG_PATH } else { Join-Path $TARGET "config.json" }
+    if (Test-Path $cfgFile) {
+        try {
+            $cf = Get-Content $cfgFile -Raw | ConvertFrom-Json
+            if ($cf.tools -and $cf.tools.PSObject.Properties['loopDetection']) {
+                $cf.tools.PSObject.Properties.Remove('loopDetection')
+                [System.IO.File]::WriteAllText($cfgFile, ($cf | ConvertTo-Json -Depth 10), $utf8b)
+                Write-Ok "已移除 config.json 中的 loopDetection"
+            }
+        } catch { Write-Warn "config.json 清理失败：$($_.Exception.Message)" }
+    }
+    $dUninst = Join-Path $PSScriptRoot "daemon-uninstall.ps1"
+    if (Test-Path $dUninst) { & powershell -NoProfile -ExecutionPolicy Bypass -File $dUninst 2>$null | Out-Null }
 }
 
 Write-Host ""

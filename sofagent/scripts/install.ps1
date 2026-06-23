@@ -24,7 +24,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$VERSION = "1.0.0"
+$VERSION = "0.82"
 
 # ── 颜色输出 ──
 function Write-Info  { param($msg) Write-Host "[sofagent] $msg" -ForegroundColor Cyan }
@@ -261,6 +261,55 @@ if (-not (Test-Path $SOFAGENT_DATA)) {
     if (-not (Test-Path (Join-Path $SOFAGENT_DATA "orchestrator\workflows"))) {
         New-Item -ItemType Directory -Path (Join-Path $SOFAGENT_DATA "orchestrator\workflows") -Force | Out-Null
     }
+}
+
+# ════════════════════════════════════════
+# Step 5（仅 OpenClaw）：部署加载链 Hook + 注入断路器（对齐 install.sh Step 6/7）
+# ════════════════════════════════════════
+if ($Platform -eq "openclaw") {
+    $utf8b = New-Object System.Text.UTF8Encoding $false
+    # ── Hook 部署 ──
+    Write-Info "OpenClaw · 部署加载链 Hook..."
+    $hookSrc = Join-Path $SKILL_SRC_DIR "hooks\sofagent-load-chain"
+    $hookDst = Join-Path $TARGET "hooks\sofagent-load-chain"
+    if ((Test-Path (Join-Path $hookSrc "HOOK.md")) -and (Test-Path (Join-Path $hookSrc "handler.ts"))) {
+        New-Item -ItemType Directory -Force -Path $hookDst | Out-Null
+        Copy-Item (Join-Path $hookSrc "HOOK.md") (Join-Path $hookDst "HOOK.md") -Force
+        Copy-Item (Join-Path $hookSrc "handler.ts") (Join-Path $hookDst "handler.ts") -Force
+        Write-Ok "加载链 Hook 已部署: $hookDst"
+        # 注册 openclaw.json: hooks.internal.entries.sofagent-load-chain = {enabled:true}
+        $ocCfg = if ($env:OPENCLAW_CONFIG_PATH) { $env:OPENCLAW_CONFIG_PATH } else { Join-Path $TARGET "openclaw.json" }
+        try {
+            $j = if (Test-Path $ocCfg) { Get-Content $ocCfg -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
+            if (-not $j.PSObject.Properties['hooks']) { $j | Add-Member hooks ([pscustomobject]@{}) }
+            if (-not $j.hooks.PSObject.Properties['internal']) { $j.hooks | Add-Member internal ([pscustomobject]@{}) }
+            $j.hooks.internal | Add-Member enabled $true -Force
+            if (-not $j.hooks.internal.PSObject.Properties['entries']) { $j.hooks.internal | Add-Member entries ([pscustomobject]@{}) }
+            $j.hooks.internal.entries | Add-Member "sofagent-load-chain" ([pscustomobject]@{ enabled = $true }) -Force
+            if (Test-Path $ocCfg) { Copy-Item $ocCfg "$ocCfg.bak" -Force }
+            [System.IO.File]::WriteAllText($ocCfg, ($j | ConvertTo-Json -Depth 10), $utf8b)
+            Write-Ok "Hook 已注册: $ocCfg"
+        } catch { Write-Warn "openclaw.json 注册失败（含注释/格式问题？）：$($_.Exception.Message)。手动加 hooks.internal.entries.sofagent-load-chain" }
+    } else { Write-Warn "找不到 hook 源文件（$hookSrc），跳过" }
+
+    # ── 断路器 loopDetection（受 -NoConfigInject 控）──
+    if (-not $NoConfigInject) {
+        Write-Info "OpenClaw · 注入断路器 loopDetection..."
+        $cfgFile = if ($env:OPENCLAW_CONFIG_PATH) { $env:OPENCLAW_CONFIG_PATH } else { Join-Path $TARGET "config.json" }
+        try {
+            $cf = if (Test-Path $cfgFile) { Get-Content $cfgFile -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
+            if ($cf.PSObject.Properties['tools'] -and $cf.tools.PSObject.Properties['loopDetection']) {
+                Write-Ok "loopDetection 已存在，跳过"
+            } else {
+                $loop = [pscustomobject]@{ enabled = $true; historySize = 30; warningThreshold = 10; criticalThreshold = 20; globalCircuitBreakerThreshold = 30; detectors = [pscustomobject]@{ genericRepeat = $true; knownPollNoProgress = $true; pingPong = $true } }
+                if (-not $cf.PSObject.Properties['tools']) { $cf | Add-Member tools ([pscustomobject]@{}) }
+                $cf.tools | Add-Member loopDetection $loop -Force
+                if (Test-Path $cfgFile) { Copy-Item $cfgFile "$cfgFile.bak" -Force }
+                [System.IO.File]::WriteAllText($cfgFile, ($cf | ConvertTo-Json -Depth 10), $utf8b)
+                Write-Ok "loopDetection 断路器已注入: $cfgFile"
+            }
+        } catch { Write-Warn "config.json 注入失败：$($_.Exception.Message)" }
+    } else { Write-Info "(-NoConfigInject) 跳过断路器注入" }
 }
 
 # ════════════════════════════════════════
