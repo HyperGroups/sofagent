@@ -87,6 +87,18 @@
 
 **复现**：`task-record.sh --budget --steps 5 --limit 0` → 除零，set -e 崩脚本。
 
+## 跨平台自检脚本（`tests/`）
+
+把验证固化成可移植脚本，各环境**独立执行**、方便复现与排查：
+
+- **`tests/check-portability.sh`** —— 纯 POSIX sh，可在 Alpine(busybox) / Ubuntu / macOS / MSYS2 直接 `sh` 跑，
+  验证 PR #1 两处修复在当前平台成立（stat 取 mtime、shasum 缺失回退），退出码 0/1。
+- **`tests/run-envs.sh`** —— 本机驱动，把上面的自检丢进 **本机 MSYS2 + WSL Ubuntu + Docker Alpine** 各自独立跑、汇总；
+  缺哪个环境就跳过哪个，互不影响。
+
+已实测（2026-06）：本机 MSYS2(GNU 8.32) 与 WSL Ubuntu 24.04(GNU 9.4) 均 **4/0 通过**，slug 跨平台一致；
+旧 `stat -f %m` 在两处 GNU 平台均复现 bug。Docker Alpine（真·无 shasum）待引擎启动后补跑。
+
 ## 回归测试
 
 `dev` 分支已有针对前 5 个确定性 bug 的回归用例（A–E，commit `44a0778`）。
