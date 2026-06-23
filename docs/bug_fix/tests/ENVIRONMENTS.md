@@ -69,10 +69,16 @@ node v24.15.0 / npm 11.12.1、gh 2.95.0。jq **未装**（脚本里用 python �
 
 把运行时 shell 脚本全量移植为原生 Windows PowerShell（纯 PowerShell + 非 WSL 可跑）。
 
-### 已移植（10 个 .ps1，均实测对照 .sh）
+### 已移植（**16 个 .ps1，100% 覆盖**，均实测对照 .sh）
 `install` `uninstall` `task-record`（反思闭环）`audit` `lib/config` `task-orchestrate`（ao 包装）
-`verify` `cleanup` `compress-memory` `verify-evidence`
-**刻意排除**：`daemon*`（5，OpenClaw 专属后台服务）、`benchmark`（测试工具）。
+`verify` `cleanup` `compress-memory` `verify-evidence` `benchmark`（A/B 题库 + audit-log 客观判定）
+`daemon` `daemon-install` `daemon-status` `daemon-uninstall` `lib/daemon-lib`。
+**全部 .sh（14）+ 2 lib 均有对应 .ps1，无遗漏。**
+
+> daemon 系列特别说明：bash 版**明确拒绝在非 Unix 运行**；PS 版**反过来支持 Windows**——
+> Get-Process 替 pgrep、Start-Process 替 nohup、Register-ScheduledTask 替 launchd/systemd、
+> 原生 ConvertFrom/To-Json 替 grep/sed。实测主循环检测到真实 workbuddy/claude 进程。
+> 计划任务注册需管理员权限（否则 try/catch 降级 + 直接启动）。
 
 ### Skill dispatch
 SKILL.md（第 1 层永远注入）加「跨平台脚本调用约定」：`bash X.sh --flag` 在纯 Windows PowerShell

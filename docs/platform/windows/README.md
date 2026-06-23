@@ -16,9 +16,13 @@
 
 ## sofagent 原生 Windows 支持现状
 
-**运行时全链路已原生化**（feat/windows-installer 分支，10 个 .ps1）：
+**全部 shell 脚本已原生化**（feat/windows-installer 分支，**16 个 .ps1，100% 覆盖**）：
 install / uninstall / task-record / audit / lib·config / task-orchestrate / verify / cleanup /
-compress-memory / verify-evidence。`daemon*` / `benchmark` 刻意排除。
+compress-memory / verify-evidence / benchmark / daemon / daemon-install / daemon-status /
+daemon-uninstall / lib·daemon-lib。**14 个 .sh + 2 lib 全部有对应 .ps1。**
+
+> daemon 系列：bash 版拒绝非 Unix；PS 版支持 Windows（Get-Process/Start-Process/
+> Register-ScheduledTask 替 pgrep/nohup/launchd）。
 
 - **Skill dispatch**：SKILL.md 第 1 层加「跨平台脚本调用约定」——`bash X.sh --flag` 在纯 PowerShell
   改 `powershell -File X.ps1 -Flag`（kebab→Pascal）。install.ps1 部署 .ps1 到 `~/.workbuddy/scripts/`。
