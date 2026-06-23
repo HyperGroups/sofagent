@@ -38,7 +38,7 @@ $files = if (-not [string]::IsNullOrEmpty($Date)) { @(Join-Path $AuditDir "$Date
 if (-not $files) { Write-Host "[X] 无 audit-log 文件（Date=$Date）"; exit 1 }
 
 # 读全部事件
-$events = foreach ($f in $files) { foreach ($l in (Get-Content $f -EA SilentlyContinue)) { try { $l | ConvertFrom-Json } catch {} } }
+$events = foreach ($f in $files) { foreach ($l in (Get-Content $f -Encoding UTF8 -EA SilentlyContinue)) { try { $l | ConvertFrom-Json } catch {} } }
 
 if ($ListSessions) {
     Write-Host "audit-log 中的会话（$AuditDir，Date=$(if($Date){$Date}else{'全部'})）:"

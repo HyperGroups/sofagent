@@ -15,7 +15,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$VERSION_STR = "0.82"
+$VERSION_STR = "0.84"
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch {}
 
 function W-Info($m) { Write-Host "[compress] $m" -ForegroundColor Blue }

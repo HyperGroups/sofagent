@@ -8,7 +8,7 @@
 # ============================================================
 
 $ErrorActionPreference = "Continue"
-$VERSION_STR = "0.82"
+$VERSION_STR = "0.84"
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch {}
 
 $daemonPs = Join-Path $PSScriptRoot "daemon.ps1"
@@ -36,4 +36,16 @@ if ($existing) {
 
 Write-Host "daemon.json / daemon.log 等用户数据已保留在 .sofagent/ 中"
 Write-Host ""
+
+$daemonScripts = @(
+    (Join-Path $PSScriptRoot "daemon.ps1"),
+    (Join-Path $PSScriptRoot "lib\daemon-lib.ps1")
+)
+foreach ($script in $daemonScripts) {
+    if (Test-Path $script) {
+        Remove-Item $script -Force
+        Write-Host "[OK] 已删除: $(Split-Path $script -Leaf)"
+    }
+}
+
 Write-Host "[OK] daemon 已卸载。"

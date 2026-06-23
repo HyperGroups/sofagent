@@ -77,8 +77,8 @@ if ($env:WSL_DISTRO_NAME) {
     exit 1
 }
 
-# 检测操作系统
-if (-not $IsWindows -and -not ($env:OS -eq "Windows_NT")) {
+# 检测操作系统（PS 5.1 无 $IsWindows，用 $env:OS 判断）
+if ($env:OS -ne "Windows_NT") {
     Write-Err "本脚本仅支持 Windows，非 Windows 环境请使用 install.sh"
     exit 1
 }
@@ -347,7 +347,7 @@ if ($Platform -eq "openclaw") {
         # 注册 openclaw.json: hooks.internal.entries.sofagent-load-chain = {enabled:true}
         $ocCfg = if ($env:OPENCLAW_CONFIG_PATH) { $env:OPENCLAW_CONFIG_PATH } else { Join-Path $TARGET "openclaw.json" }
         try {
-            $j = if (Test-Path $ocCfg) { Get-Content $ocCfg -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
+            $j = if (Test-Path $ocCfg) { Get-Content $ocCfg -Raw -Encoding UTF8 | ConvertFrom-Json } else { [pscustomobject]@{} }
             if (-not $j.PSObject.Properties['hooks']) { $j | Add-Member hooks ([pscustomobject]@{}) }
             if (-not $j.hooks.PSObject.Properties['internal']) { $j.hooks | Add-Member internal ([pscustomobject]@{}) }
             $j.hooks.internal | Add-Member enabled $true -Force
@@ -364,7 +364,7 @@ if ($Platform -eq "openclaw") {
         Write-Info "OpenClaw · 注入断路器 loopDetection..."
         $cfgFile = if ($env:OPENCLAW_CONFIG_PATH) { $env:OPENCLAW_CONFIG_PATH } else { Join-Path $TARGET "config.json" }
         try {
-            $cf = if (Test-Path $cfgFile) { Get-Content $cfgFile -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
+            $cf = if (Test-Path $cfgFile) { Get-Content $cfgFile -Raw -Encoding UTF8 | ConvertFrom-Json } else { [pscustomobject]@{} }
             if ($cf.PSObject.Properties['tools'] -and $cf.tools.PSObject.Properties['loopDetection']) {
                 Write-Ok "loopDetection 已存在，跳过"
             } else {

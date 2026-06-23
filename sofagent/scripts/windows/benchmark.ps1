@@ -23,7 +23,7 @@ param(
 )
 
 $ErrorActionPreference = "Continue"
-$VERSION_STR = "0.82"
+$VERSION_STR = "0.84"
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch {}
 
 function W-Info($m) { Write-Host "[benchmark] $m" -ForegroundColor Blue }
@@ -73,11 +73,42 @@ if ($Summary) {
     exit 0
 }
 
-if ($Api -and $Platform -ne "openclaw") {
-    W-Warn "-Api 仅 OpenClaw 支持（需 openclaw agent CLI）。Windows/WorkBuddy 降级为半自动。"
+# ── -Api 单任务自动跑（移植 benchmark.sh run_api_task；PS 原生 ConvertFrom-Json 替 python3）──
+function Invoke-ApiTask($num, $prompt, $type) {
+    W-Info "  [$num/$($TASKS.Count)] $type ..."
+    $raw = ""
+    # 注：openclaw 2026.6.x 的 agent 子命令无 --timeout flag（.sh 用过，此处移除）
+    try { $raw = (& openclaw agent --agent $Agent --message $prompt --json 2>$null | Out-String) } catch { $raw = "" }
+    if ([string]::IsNullOrWhiteSpace($raw)) {
+        W-Warn "    无响应——agent 不存在或超时"
+        return @{ pass = "FAIL"; status = "无响应"; tokens = "0"; steps = "0"; note = "agent 无响应" }
+    }
+    try {
+        $j = $raw | ConvertFrom-Json
+        $status = if ($j.PSObject.Properties['status']) { "$($j.status)" } else { "UNKNOWN" }
+        $tokens = if ($j.PSObject.Properties['usage'] -and $j.usage.PSObject.Properties['total_tokens']) { $j.usage.total_tokens } elseif ($j.PSObject.Properties['tokens']) { $j.tokens } else { "N/A" }
+        $steps  = if ($j.PSObject.Properties['messages']) { @($j.messages).Count } elseif ($j.PSObject.Properties['steps']) { @($j.steps).Count } else { "N/A" }
+        $pass = if ($status -match 'success|ok|complete') { "PASS" } else { "FAIL" }
+        return @{ pass = $pass; status = $status; tokens = $tokens; steps = $steps; note = "API 自动跑" }
+    } catch {
+        return @{ pass = "FAIL"; status = "PARSE_ERROR"; tokens = "N/A"; steps = "N/A"; note = "JSON 解析失败" }
+    }
 }
-if ($Api -and -not (Get-Command openclaw -ErrorAction SilentlyContinue)) {
-    W-Warn "openclaw CLI 不可用 → 降级半自动。"
+
+# ── 判定能否真正自动跑（仅 openclaw 平台 + openclaw CLI 在场）──
+$autoResults = @{}
+$canAutoRun = $false
+if ($Api) {
+    if ($Platform -ne "openclaw") {
+        W-Warn "-Api 仅 OpenClaw 支持（需 openclaw agent CLI）→ 降级半自动模板。"
+    } elseif (-not (Get-Command openclaw -ErrorAction SilentlyContinue)) {
+        W-Warn "openclaw CLI 不在 PATH → 降级半自动模板。"
+    } else {
+        $canAutoRun = $true
+        W-Info "-Api 全自动：用 openclaw agent『$Agent』自动跑 $($TASKS.Count) 个任务（带 sofagent 侧）..."
+        foreach ($t in $TASKS) { $autoResults[$t.n] = Invoke-ApiTask $t.n $t.prompt $t.type }
+        W-Ok "自动跑完成；不带 sofagent 侧仍需手动跑对照。"
+    }
 }
 
 # ── 生成半自动对比报告模板 ──
@@ -125,6 +156,12 @@ foreach ($t in $TASKS) {
     Add-Line "| 安全决策(allowed/needs-approval/failed) | _填_ | _填_ |"
     Add-Line "| 任务结果(客观:测试/build) | _填_ | _填_ |"
     Add-Line "| 结果 PASS/FAIL | _填_ | _填_ |"
+    if ($autoResults[$t.n]) {
+        $r = $autoResults[$t.n]
+        Add-Line ""
+        Add-Line "**API 自动跑（带 sofagent · agent=$Agent）**：$($r.pass) · status=``$($r.status)`` · tokens=$($r.tokens) · steps=$($r.steps) · $($r.note)"
+        Add-Line "> 注：以上为 openclaw agent JSON 自报；客观判定仍以 audit-log 为准（上表）。"
+    }
     Add-Line ""
     Add-Line "---"
     Add-Line ""
@@ -141,5 +178,11 @@ Add-Line ""
 Add-Line "> ⭐ 标记的任务（1/3/6/7/10）用 audit-log 客观判定，可信度最高；其余靠 transcript/人工，标注主观。"
 
 [System.IO.File]::WriteAllText($outputFile, $sb.ToString(), $utf8NoBom)
-W-Ok "已生成对比报告模板：$outputFile（$($TASKS.Count) 任务）"
-W-Info "下一步：在 WorkBuddy 两个会话跑各任务 → 记 sessionId → 用 audit-log 填客观指标。"
+if ($canAutoRun) {
+    W-Ok "已生成报告（带 sofagent 侧 API 自动跑完）：$outputFile（$($TASKS.Count) 任务）"
+    W-Info "下一步：手动跑『不带 sofagent』对照会话 → 两侧都用 audit-log 填客观指标对比。"
+} else {
+    W-Ok "已生成对比报告模板：$outputFile（$($TASKS.Count) 任务）"
+    W-Info "下一步：两个会话（带/不带 sofagent）各跑 → 记 sessionId → 用 audit-log 填客观指标。"
+    W-Info "（openclaw 平台可加 -Api 让『带 sofagent』侧自动跑）"
+}

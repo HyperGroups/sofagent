@@ -8,7 +8,7 @@
 param([switch]$Detect, [switch]$Json)
 
 $ErrorActionPreference = "Continue"
-$VERSION_STR = "0.82"
+$VERSION_STR = "0.84"
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch {}
 
 $script:SOFAGENT_DATA = if (-not [string]::IsNullOrEmpty($env:SOFAGENT_DATA)) { $env:SOFAGENT_DATA } else { Join-Path (Get-Location).Path ".sofagent" }

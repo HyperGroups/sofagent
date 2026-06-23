@@ -43,7 +43,8 @@ function Get-DetectedPlatforms {
 # ── 日志 ──
 function Write-DaemonLog($msg) {
     $now = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-    try { Add-Content -Path $script:DAEMON_LOG -Value "[$now] $msg" -Encoding UTF8 } catch {}
+    # PS 5.1 Add-Content -Encoding UTF8 写 BOM，改用 .NET API 追加 UTF-8 无 BOM
+    try { [System.IO.File]::AppendAllText($script:DAEMON_LOG, "[$now] $msg`n", $utf8NoBomLib) } catch {}
 }
 
 # ── PID 管理 ──

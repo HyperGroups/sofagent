@@ -61,7 +61,8 @@ if ($env:WSL_DISTRO_NAME) {
     Write-Warn "  bash sofagent/scripts/uninstall.sh --platform workbuddy"
     exit 1
 }
-if (-not $IsWindows -and -not ($env:OS -eq "Windows_NT")) {
+# 操作系统检测（PS 5.1 无 $IsWindows，用 $env:OS 判断）
+if ($env:OS -ne "Windows_NT") {
     Write-Err "本脚本仅支持 Windows, 非 Windows 环境请使用 uninstall.sh"
     exit 1
 }
@@ -146,7 +147,7 @@ if ($Platform -eq "openclaw") {
     $ocCfg = if ($env:OPENCLAW_CONFIG_PATH) { $env:OPENCLAW_CONFIG_PATH } else { Join-Path $TARGET "openclaw.json" }
     if (Test-Path $ocCfg) {
         try {
-            $j = Get-Content $ocCfg -Raw | ConvertFrom-Json
+            $j = Get-Content $ocCfg -Raw -Encoding UTF8 | ConvertFrom-Json
             if ($j.hooks -and $j.hooks.internal -and $j.hooks.internal.entries -and $j.hooks.internal.entries.PSObject.Properties['sofagent-load-chain']) {
                 $j.hooks.internal.entries.PSObject.Properties.Remove('sofagent-load-chain')
                 [System.IO.File]::WriteAllText($ocCfg, ($j | ConvertTo-Json -Depth 10), $utf8b)
@@ -157,7 +158,7 @@ if ($Platform -eq "openclaw") {
     $cfgFile = if ($env:OPENCLAW_CONFIG_PATH) { $env:OPENCLAW_CONFIG_PATH } else { Join-Path $TARGET "config.json" }
     if (Test-Path $cfgFile) {
         try {
-            $cf = Get-Content $cfgFile -Raw | ConvertFrom-Json
+            $cf = Get-Content $cfgFile -Raw -Encoding UTF8 | ConvertFrom-Json
             if ($cf.tools -and $cf.tools.PSObject.Properties['loopDetection']) {
                 $cf.tools.PSObject.Properties.Remove('loopDetection')
                 [System.IO.File]::WriteAllText($cfgFile, ($cf | ConvertTo-Json -Depth 10), $utf8b)

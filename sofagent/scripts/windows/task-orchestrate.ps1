@@ -16,7 +16,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$VERSION_STR = "0.82"
+$VERSION_STR = "0.84"
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch {}
 
 # ── 颜色输出辅助 ──
@@ -133,7 +133,7 @@ if (Test-Path $orchestratorDir) {
         W-Info "读取编排配置: $orchConfig"
         if ($orchConfig -like "*.json") {
             try {
-                $cfg = Get-Content $orchConfig -Raw | ConvertFrom-Json
+                $cfg = Get-Content $orchConfig -Raw -Encoding UTF8 | ConvertFrom-Json
                 $cl = if ($cfg.level) { $cfg.level } elseif ($cfg.suggested_level) { $cfg.suggested_level } else { $null }
                 if ($cfg.checkpoint) { $configThreshold = $cfg.checkpoint }
                 if ($null -ne $cl) { $Level = [int]$cl }
@@ -240,13 +240,13 @@ elseif ($Level -eq 3) {
     $l3json = Join-Path $orchestratorDir "$TaskSlug.json"
     $aoTemplate = ""
     if (Test-Path $l3json) {
-        try { $aoTemplate = (Get-Content $l3json -Raw | ConvertFrom-Json).ao_template } catch {}
+        try { $aoTemplate = (Get-Content $l3json -Raw -Encoding UTF8 | ConvertFrom-Json).ao_template } catch {}
     }
     if (-not [string]::IsNullOrEmpty($aoTemplate)) {
         W-Info "L3 模板调度 — ao run $aoTemplate"
         $aoInputs = @()
         try {
-            $inputs = (Get-Content $l3json -Raw | ConvertFrom-Json).inputs
+            $inputs = (Get-Content $l3json -Raw -Encoding UTF8 | ConvertFrom-Json).inputs
             if ($inputs) { foreach ($p in $inputs.PSObject.Properties) { $aoInputs += "--input"; $aoInputs += "$($p.Name)=$($p.Value)" } }
         } catch {}
         $start = Get-Date

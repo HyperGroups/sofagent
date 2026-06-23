@@ -11,7 +11,7 @@
 param([switch]$Daemon)
 
 $ErrorActionPreference = "Continue"
-$VERSION_STR = "0.82"
+$VERSION_STR = "0.84"
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch {}
 
 $sofagentData = if (-not [string]::IsNullOrEmpty($env:SOFAGENT_DATA)) { $env:SOFAGENT_DATA } else { Join-Path (Get-Location).Path ".sofagent" }
@@ -30,7 +30,7 @@ if (-not (Test-Path $logFile)) {
     exit 1
 }
 
-$content = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
+$content = Get-Content $logFile -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
 function Count-Matches($pattern) { ([regex]::Matches($content, $pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count }
 
 $hasTest  = Count-Matches "exit.code|测试.*(pass|fail|通过|失败)|test.*(pass|fail)|✅.*pass|❌.*fail"
