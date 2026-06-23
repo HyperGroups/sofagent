@@ -10,7 +10,7 @@
 | 平台 | 内容 |
 |------|------|
 | [workbuddy/](workbuddy/) | 目录结构、Skill 部署位置、**audit-log 审计日志 schema**（A/B 评测的机械层尺子） |
-| [windows/](windows/) | 原生 Windows 环境（PowerShell 5.1）、编码/换行、.ps1 移植 |
+| [windows/](windows/) | 原生 Windows 环境（PowerShell 5.1）、编码/换行、.ps1 移植；**安装/使用指南见 [windows/install.md](windows/install.md)** |
 | [openclaw/](openclaw/) | 目录结构、内部 hook（agent:bootstrap）、日志、断路器配置 |
 
 ## 速查：sofagent 在各平台的部署位置

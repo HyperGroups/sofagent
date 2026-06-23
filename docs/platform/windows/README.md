@@ -3,6 +3,8 @@
 > "原生 Windows" = **Windows PowerShell 5.1（`powershell.exe`）+ 非 WSL**（用户定义）。
 > 完整环境矩阵 + 编码/换行踩坑全集见 [`docs/bug_fix/tests/ENVIRONMENTS.md`](../../bug_fix/tests/ENVIRONMENTS.md)。
 
+> 📦 **安装 / 使用 / 卸载（面向用户的操作指南）见 [install.md](install.md)。** 本文是环境勘察 + 移植现状 + 踩坑记录（面向维护者）。
+
 ## 本机环境（Windows 11 build 26200，中文版）
 
 | 组件 | 版本 |
@@ -16,10 +18,13 @@
 
 ## sofagent 原生 Windows 支持现状
 
-**全部 shell 脚本已原生化**（feat/windows-installer 分支，**16 个 .ps1，100% 覆盖**）：
+**全部 shell 脚本已原生化**（feat/windows-installer 分支，**16 个 .sh 移植 100% 覆盖 + ab-eval.ps1 = 17 个 .ps1**）：
 install / uninstall / task-record / audit / lib·config / task-orchestrate / verify / cleanup /
 compress-memory / verify-evidence / benchmark / daemon / daemon-install / daemon-status /
-daemon-uninstall / lib·daemon-lib。**14 个 .sh + 2 lib 全部有对应 .ps1。**
+daemon-uninstall / lib·daemon-lib。**14 个 .sh + 2 lib 全部有对应 .ps1**；另加 fork 专属 `ab-eval.ps1`（audit-log A/B 分析，上游无 .sh 对应）。
+
+> 已合并 upstream v0.84；install.ps1 已补 v0.84 新行为（部署后 SKILL.md 置 `disable: true`）。
+> 已知小问题：.ps1 版本号仍标 0.82（落后 .sh 的 0.84），见 `issues/026`，仅展示性。
 
 > daemon 系列：bash 版拒绝非 Unix；PS 版支持 Windows（Get-Process/Start-Process/
 > Register-ScheduledTask 替 pgrep/nohup/launchd）。
@@ -36,7 +41,7 @@ daemon-uninstall / lib·daemon-lib。**14 个 .sh + 2 lib 全部有对应 .ps1�
 3. 脚本顶部 `[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false`（防输出被 Agent 读到乱码）。
 4. `.gitattributes` 锁 `*.ps1=CRLF` / `*.sh=LF`。
 
-## PowerShell 语法坑（移植 9 脚本踩过）
+## PowerShell 语法坑（移植 16 脚本踩过）
 
 - `if` 表达式**不能直接作函数参数** → 先 `$x = if...` 再传。
 - `switch` 无 `break` **执行所有匹配 case** → 用 if/elseif 链。
