@@ -64,3 +64,34 @@ node v24.15.0 / npm 11.12.1、gh 2.95.0。jq **未装**（脚本里用 python �
 | 2 | install.ps1 rules.md 用旧路径 `constitution\rules.md` | v0.73 已扁平化到 `sofagent\rules.md` → **宪法部署失败** | 新路径优先 + 旧路径 fallback |
 
 两者均由**沙箱实测**逐轮跑出来，修复后部署循环全过。
+
+## 四、Shell→PowerShell 全面移植（`feat/windows-installer`）
+
+把运行时 shell 脚本全量移植为原生 Windows PowerShell（纯 PowerShell + 非 WSL 可跑）。
+
+### 已移植（10 个 .ps1，均实测对照 .sh）
+`install` `uninstall` `task-record`（反思闭环）`audit` `lib/config` `task-orchestrate`（ao 包装）
+`verify` `cleanup` `compress-memory` `verify-evidence`
+**刻意排除**：`daemon*`（5，OpenClaw 专属后台服务）、`benchmark`（测试工具）。
+
+### Skill dispatch
+SKILL.md（第 1 层永远注入）加「跨平台脚本调用约定」：`bash X.sh --flag` 在纯 Windows PowerShell
+改 `powershell -File X.ps1 -Flag`（kebab→Pascal）。install.ps1 部署 .ps1 到 `$TARGET\scripts\`。
+E2E 实测：install→部署7脚本→用部署后的 task-record.ps1 跑闭环→uninstall，纯 PowerShell 全过。
+
+### PowerShell 移植踩坑全集（写 .ps1 必看）
+1. **脚本编码**：含中文 .ps1 必须 **UTF-8 BOM**（PS 5.1 读无 BOM 按 GBK 解析、乱码/解析错）。
+2. **加 BOM 时读取**须 `Get-Content -Raw -Encoding UTF8`（不指定→GBK 误读、直接读坏文件）。
+3. **控制台输出**：脚本顶部加 `[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false`，
+   否则输出按 OEM/GBK 编码，被 UTF-8 消费方（Agent/Git Bash）读到乱码。机器可读前缀（ASCII）不受影响。
+4. **`if` 表达式不能直接作函数参数**：`f (if(){}else{})` 运行时崩 → 先 `$x = if...` 再传。
+5. **`switch` 无 `break` 执行所有匹配 case**：兜底 `^-` 会误伤每个 flag → 用 if/elseif 链。
+6. **函数前向引用**：PS 顺序解释，函数定义须在调用之前（Write-Summary 被前置段调用就得提前定义）。
+7. **单元素嵌套数组 `@(@(...))` 被摊平**成一维 → `foreach` 遍历到字符、`$x[0]` 取首字符。多元素不摊平。
+8. **日志/数据文件写 UTF-8 无 BOM**：用 `[IO.File]::WriteAllText/AppendAllText($p,$s,(New-Object Text.UTF8Encoding $false))`，对齐 .sh，且 BOM 会污染追加。
+9. **`.gitattributes`** 锁 `*.ps1=CRLF` / `*.sh=LF`。
+
+### 移植中顺带发现的 .sh bug（候选独立 PR）
+- `task-record.sh` 的 `sanitize()` 用 BSD 专属词边界 `[[:<:]]`，**GNU sed 4.9 报 `Invalid character class`** →
+  AWS密钥/凭证/手机/IP 4 条脱敏在 Linux 上失效。ps1 用 `\b` 修对。
+- `stat -f %m`（BSD）在 GNU 上是 `--file-system`、取不到 mtime（已在 PR #1 修）。
