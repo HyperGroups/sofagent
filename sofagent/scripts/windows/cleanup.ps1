@@ -62,7 +62,7 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding $false
 function Count-Entries($dir) {
     $n = 0
     Get-ChildItem $dir -Filter *.md -EA SilentlyContinue | ForEach-Object {
-        $n += (Get-Content $_.FullName -EA SilentlyContinue | Where-Object { $_ -match '^## ' }).Count
+        $n += (Get-Content $_.FullName -Encoding UTF8 -EA SilentlyContinue | Where-Object { $_ -match '^## ' }).Count
     }
     return $n
 }
@@ -115,7 +115,7 @@ if ($expiredMonths) {
 # ── 2. 按条清理（总条目超上限 → 从最旧月删）──
 $totalEntries = 0
 Get-ChildItem $logsDir -Recurse -Filter *.md -EA SilentlyContinue | Where-Object { $_.FullName -notlike "*\archive\*" } | ForEach-Object {
-    $totalEntries += (Get-Content $_.FullName -EA SilentlyContinue | Where-Object { $_ -match '^## ' }).Count
+    $totalEntries += (Get-Content $_.FullName -Encoding UTF8 -EA SilentlyContinue | Where-Object { $_ -match '^## ' }).Count
 }
 if ($totalEntries -gt $retentionMax) {
     $excess = $totalEntries - $retentionMax

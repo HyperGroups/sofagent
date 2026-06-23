@@ -11,10 +11,10 @@ $utf8NoBomLib = New-Object System.Text.UTF8Encoding $false
 # ── JSON 读写（原生）──
 function Get-DaemonJson {
     if (-not (Test-Path $script:DAEMON_JSON)) { return $null }
-    try { return (Get-Content $script:DAEMON_JSON -Raw -EA Stop | ConvertFrom-Json) } catch { return $null }
+    try { return (Get-Content $script:DAEMON_JSON -Raw -Encoding UTF8 -EA Stop | ConvertFrom-Json) } catch { return $null }
 }
 function Set-DaemonJson($obj) {
-    [System.IO.File]::WriteAllText($script:DAEMON_JSON, ($obj | ConvertTo-Json), $utf8NoBomLib)
+    [System.IO.File]::WriteAllText($script:DAEMON_JSON, ($obj | ConvertTo-Json -Depth 5), $utf8NoBomLib)
 }
 function Get-JsonField($key) {
     $o = Get-DaemonJson
@@ -50,7 +50,7 @@ function Write-DaemonLog($msg) {
 # ── PID 管理 ──
 function Get-DaemonPid {
     if (Test-Path $script:DAEMON_PID_FILE) {
-        try { return (Get-Content $script:DAEMON_PID_FILE -Raw -EA SilentlyContinue).Trim() } catch { return "" }
+        try { return (Get-Content $script:DAEMON_PID_FILE -Raw -Encoding ASCII -EA SilentlyContinue).Trim() } catch { return "" }
     }
     return ""
 }

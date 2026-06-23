@@ -36,7 +36,7 @@ function Initialize-DaemonJson {
         pid = $PID; started_at = (Get-UtcNow); mode = "full"; detected_platforms = "";
         think_hash = ""; rules_hash = ""; last_check = (Get-UtcNow); last_evidence_score = "unknown"
     }
-    [System.IO.File]::WriteAllText($script:DAEMON_JSON, (([pscustomobject]$obj) | ConvertTo-Json), $utf8NoBom)
+    [System.IO.File]::WriteAllText($script:DAEMON_JSON, (([pscustomobject]$obj) | ConvertTo-Json -Depth 5), $utf8NoBom)
 }
 
 function Find-ThinkFile {

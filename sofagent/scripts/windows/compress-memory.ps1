@@ -40,11 +40,11 @@ $archiveFile = Join-Path $sofagentData "think.archive.md"
 if (-not (Test-Path $thinkFile)) { W-Info "think.md 不存在，无需压缩。"; exit 0 }
 
 $size = (Get-Item $thinkFile).Length
-$lineCount = (Get-Content $thinkFile -EA SilentlyContinue).Count
+$lineCount = (Get-Content $thinkFile -Encoding UTF8 -EA SilentlyContinue).Count
 W-Info "think.md: $size bytes · $lineCount 行"
 
 $sixtyAgo = (Get-Date).AddDays(-60).ToString("yyyy-MM-dd")
-$lines = Get-Content $thinkFile -EA SilentlyContinue
+$lines = Get-Content $thinkFile -Encoding UTF8 -EA SilentlyContinue
 
 if ($DryRun) {
     Write-Host ""; W-Info "=== 预览：条目统计 ==="
@@ -112,5 +112,5 @@ if ($active.Count -gt 0) {
 }
 
 W-Ok "压缩完成。"
-W-Info "活跃反思区: $((Get-Content $thinkFile -EA SilentlyContinue).Count) 行"
-if (Test-Path $archiveFile) { W-Info "归档区: $((Get-Content $archiveFile -EA SilentlyContinue).Count) 行" }
+W-Info "活跃反思区: $((Get-Content $thinkFile -Encoding UTF8 -EA SilentlyContinue).Count) 行"
+if (Test-Path $archiveFile) { W-Info "归档区: $((Get-Content $archiveFile -Encoding UTF8 -EA SilentlyContinue).Count) 行" }

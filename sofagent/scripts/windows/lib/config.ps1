@@ -30,7 +30,8 @@ $script:SofaRulesFile = Find-SofaRulesFile
 # ── 从 rules.md 提取 key: value（仅非注释行，即已启用项）──
 function Get-SofaConf($key, $default) {
     if ([string]::IsNullOrEmpty($script:SofaRulesFile)) { return $default }
-    $m = Select-String -Path $script:SofaRulesFile -Pattern "^${key}:" -ErrorAction SilentlyContinue | Select-Object -First 1
+    # PS 5.1 Select-String -Path 用系统编码读文件，改用 Get-Content -Encoding UTF8
+    $m = Get-Content $script:SofaRulesFile -Encoding UTF8 -ErrorAction SilentlyContinue | Select-String -Pattern "^${key}:" | Select-Object -First 1
     if ($m) {
         return ($m.Line -replace "^[^:]+:\s*", "" -replace "\s+$", "")
     }

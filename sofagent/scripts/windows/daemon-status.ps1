@@ -49,7 +49,7 @@ if ($Json) {
         last_check = if ($o) { $o.last_check } else { "" }
         last_evidence_score = $evidence
     }
-    Write-Host (([pscustomobject]$out) | ConvertTo-Json -Compress)
+    Write-Host (([pscustomobject]$out) | ConvertTo-Json -Depth 5 -Compress)
     return
 }
 

@@ -150,7 +150,7 @@ function Get-TrackRecord($matchText) {
     $logRoot = Join-Path $sofagentData "task\logs"
     if (Test-Path $logRoot) {
         foreach ($lf in Get-ChildItem $logRoot -Recurse -Filter *.md -ErrorAction SilentlyContinue) {
-            $content = Get-Content $lf.FullName -ErrorAction SilentlyContinue
+            $content = Get-Content $lf.FullName -Encoding UTF8 -ErrorAction SilentlyContinue
             if (-not ($content | Select-String -SimpleMatch $matchText -Quiet)) { continue }
             foreach ($line in $content) {
                 if ($line -match '状态 \| 成功') { $success++; $total++ }
@@ -168,7 +168,7 @@ function Invoke-SlidingWindowRollback($slug, $currentLevel) {
     if (Test-Path $logRoot) {
         foreach ($lf in Get-ChildItem $logRoot -Recurse -Filter *.md -ErrorAction SilentlyContinue) {
             $inBlock = $false
-            foreach ($line in (Get-Content $lf.FullName -ErrorAction SilentlyContinue)) {
+            foreach ($line in (Get-Content $lf.FullName -Encoding UTF8 -ErrorAction SilentlyContinue)) {
                 if ($line -match '^## ') { $inBlock = $line.Contains($TaskDesc) }
                 elseif ($inBlock -and $line -match '\| 状态') { $statusLines += $line }
             }
@@ -292,7 +292,7 @@ if ($skipOrchestrate) {
 if ($skipAoCompose) {
     W-Info "Step 1/4 · L$Level — 跳过 ao compose，使用缓存模板"
     if ($DryRun) {
-        try { & ao explain $workflowFile 2>$null } catch { Get-Content $workflowFile -TotalCount 10 }
+        try { & ao explain $workflowFile 2>$null } catch { Get-Content $workflowFile -Encoding UTF8 -TotalCount 10 }
         Exit-Orchestrate 0
     }
 } else {
@@ -300,14 +300,17 @@ if ($skipAoCompose) {
     if (-not [string]::IsNullOrEmpty($AoModel)) { W-Info "  模型: $AoModel" }
     $workflowFile = Join-Path ([System.IO.Path]::GetTempPath()) "sofagent-workflow-$PID.yaml"
     $composeArgs = @(); if (-not [string]::IsNullOrEmpty($AoModel)) { $composeArgs += "--model"; $composeArgs += $AoModel }
-    try { & ao compose @composeArgs $TaskDesc > $workflowFile 2>$null } catch {}
+    # PS 5.1 `>` redirect 写 UTF-16LE，改用 .NET API 写 UTF-8 无 BOM
+    $composeOut = ""
+    try { $composeOut = & ao compose @composeArgs $TaskDesc 2>$null | Out-String } catch {}
+    if ($composeOut) { [System.IO.File]::WriteAllText($workflowFile, $composeOut, (New-Object System.Text.UTF8Encoding $false)) }
     if (-not (Test-Path $workflowFile) -or (Get-Item $workflowFile).Length -eq 0) {
-        "# ao compose failed" | Out-File -FilePath $workflowFile -Encoding utf8
+        [System.IO.File]::WriteAllText($workflowFile, "# ao compose failed`n", (New-Object System.Text.UTF8Encoding $false))
     }
     if ((Get-Item $workflowFile).Length -gt 0) {
         W-Ok "编排计划已生成"
         W-Info "编排预览:"
-        try { & ao explain $workflowFile 2>$null } catch { Get-Content $workflowFile -TotalCount 20 }
+        try { & ao explain $workflowFile 2>$null } catch { Get-Content $workflowFile -Encoding UTF8 -TotalCount 20 }
     } else {
         W-Warn "编排计划为空，直接执行"
         if (-not $DryRun) { & ao compose $TaskDesc --run }
@@ -328,7 +331,9 @@ $inGitRepo = $false
 try { git rev-parse --git-dir 2>$null | Out-Null; $inGitRepo = ($LASTEXITCODE -eq 0) } catch {}
 if ($UseWorktree -and $inGitRepo) {
     W-Info "Step 2/4 · 创建 worktree 隔离..."
-    $subCount = (Select-String -Path $workflowFile -Pattern 'subtask|agent|workflow' -ErrorAction SilentlyContinue | Measure-Object).Count
+    # PS 5.1 Select-String -Path 用系统编码读文件，改用 Get-Content -Encoding UTF8
+    $wfContent = Get-Content $workflowFile -Encoding UTF8 -ErrorAction SilentlyContinue
+    $subCount = if ($wfContent) { ($wfContent | Select-String -Pattern 'subtask|agent|workflow' | Measure-Object).Count } else { 0 }
     if ($subCount -le 0) { $subCount = 1 }
     if ($subCount -gt 5) { $subCount = 5 }
     $baseBranch = (git branch --show-current 2>$null); if ([string]::IsNullOrEmpty($baseBranch)) { $baseBranch = "main" }

@@ -69,7 +69,7 @@ $auditMeasurable = @{ 3 = "command-safety：实际执行 or 拦截"; 6 = "comman
 if ($Summary) {
     if (-not (Test-Path $outputFile)) { Write-Host "错误：$outputFile 不存在，请先运行 benchmark 生成任务。"; exit 1 }
     W-Info "汇总已有结果：$outputFile"
-    Get-Content $outputFile | Select-String '^\| [0-9]+ \|' | ForEach-Object { $_.Line }
+    Get-Content $outputFile -Encoding UTF8 | Select-String '^\| [0-9]+ \|' | ForEach-Object { $_.Line }
     exit 0
 }
 

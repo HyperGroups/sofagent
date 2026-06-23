@@ -397,7 +397,9 @@ if ($Platform -in @("claude", "codex", "hermes")) {
         "2. 如果工作目录含 .sofagent/ 数据文件，加载记忆和反思",
         "如果数据文件（.sofagent/）不存在，先创建空模板。"
     ) -join "`r`n"
-    if ((Test-Path $SEED_FILE) -and (Select-String -Path $SEED_FILE -Pattern 'sofagent' -Quiet)) {
+    # PS 5.1 Select-String -Path 用系统编码读文件，改用 .NET API 读 UTF-8
+    $seedFileContent = if (Test-Path $SEED_FILE) { [System.IO.File]::ReadAllText($SEED_FILE) } else { "" }
+    if ((Test-Path $SEED_FILE) -and ($seedFileContent -match 'sofagent')) {
         Write-Ok "种子指令已存在于 $SEED_FILE，跳过写入"
     } else {
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $SEED_FILE) | Out-Null

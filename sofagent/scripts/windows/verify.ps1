@@ -91,7 +91,9 @@ if ($Quick) {
     if (-not $Json -and -not $Quiet) { Write-Host "  [快速模式] 4 项核心检查" }
     # 修复 .sh 老 bug：quick 模式应按平台找 SKILL.md，不能写死 .openclaw（workbuddy 装在 .workbuddy）
     $skillQuick = @("$OPENCLAW_DIR\skills\sofagent\SKILL.md", "$up\.workbuddy\skills\sofagent\SKILL.md", "$up\.openclaw\skills\sofagent\SKILL.md") | Where-Object { Test-Path $_ } | Select-Object -First 1
-    if ($skillQuick -and (Select-String -Path $skillQuick -Pattern "4.*底线|10.*铁律" -Quiet)) { Check-Pass "SKILL.md 存在且含宪法（4底线+10铁律）" } else { Check-Fail "SKILL.md 缺失或宪法关键词不全" }
+    # PS 5.1 Select-String -Path 用系统编码读文件，改用 .NET API 读 UTF-8
+    $skillQuickContent = if ($skillQuick) { [System.IO.File]::ReadAllText($skillQuick) } else { "" }
+    if ($skillQuick -and ($skillQuickContent -match "4.*底线|10.*铁律")) { Check-Pass "SKILL.md 存在且含宪法（4底线+10铁律）" } else { Check-Fail "SKILL.md 缺失或宪法关键词不全" }
     if (Test-Path (Join-Path (Get-Location).Path ".sofagent")) { Check-Pass ".sofagent/ 数据目录存在" } else { Check-Warn ".sofagent/ 数据目录不存在（首次使用会自动创建）" }
     if (Get-Command ao -ErrorAction SilentlyContinue) { Check-Pass "ao compose 可用 — v$(ao --version 2>$null)" } else { Check-Warn "ao compose 不可用——编排引擎降级为默认编排" }
     $rulesQuick = @("$OPENCLAW_DIR\skills\sofagent\rules.md", "$up\.workbuddy\skills\sofagent\rules.md", "$up\.openclaw\rules.md") | Where-Object { Test-Path $_ } | Select-Object -First 1
@@ -104,7 +106,9 @@ if ($Platform -eq "workbuddy") {
     Check-Pass "WorkBuddy 平台——宪法/Hook/断路器由 SKILL.md 入口流程管理"
     $wbSkill = "$up\.workbuddy\skills\sofagent\SKILL.md"
     if ((Test-Path $wbSkill) -and (Get-Item $wbSkill).Length -gt 0) {
-        if (Select-String -Path $wbSkill -Pattern "4 底线|10 铁律" -Quiet) { Check-Pass "SKILL.md 已部署且含宪法（4底线+10铁律内联）" } else { Check-Warn "SKILL.md 已部署但宪法内容缺失" }
+        # PS 5.1 Select-String -Path 用系统编码读文件，改用 .NET API 读 UTF-8
+        $wbSkillContent = [System.IO.File]::ReadAllText($wbSkill)
+        if ($wbSkillContent -match "4 底线|10 铁律") { Check-Pass "SKILL.md 已部署且含宪法（4底线+10铁律内联）" } else { Check-Warn "SKILL.md 已部署但宪法内容缺失" }
     } else { Check-Warn "SKILL.md 未部署到 ~/.workbuddy/skills/sofagent/" }
     $wbRules = "$up\.workbuddy\rules.md"
     if ((Test-Path $wbRules) -and (Get-Item $wbRules).Length -gt 0) { Check-Pass "rules.md 已部署（$(Get-CharCount $wbRules) 字符）" } else { Check-Warn "rules.md 未部署到 ~/.workbuddy/" }
@@ -121,7 +125,7 @@ Section "宪法文件（rules.md）"
 $rp = Join-Path $OPENCLAW_DIR "skills\sofagent\rules.md"
 if (-not (Test-Path $rp)) { $rp = Join-Path $OPENCLAW_DIR "rules.md" }
 if ((Test-Path $rp) -and (Get-Item $rp).Length -gt 0) {
-    $chars = Get-CharCount $rp; $lines = (Get-Content $rp).Count
+    $chars = Get-CharCount $rp; $lines = (Get-Content $rp -Encoding UTF8).Count
     Check-Pass "rules.md ($chars 字符, $lines 行)"
     if ($chars -gt 1200) { Check-Warn "rules.md 超过 1200 字符（$chars），宪法层阈值放宽至 1200" }
 } else { Check-Fail "rules.md — 缺失或为空" }
@@ -163,7 +167,9 @@ if (Test-Path $sofagentData) {
 Section "约束验证"
 $skillFile = Join-Path $OPENCLAW_DIR "skills\sofagent\SKILL.md"
 if (Test-Path $skillFile) {
-    if (Select-String -Path $skillFile -Pattern "4.*底线|10.*铁律" -Quiet) { Check-Pass "契约层关键词完整（4底线+10铁律内联在 SKILL.md）" } else { Check-Fail "SKILL.md 内容异常——宪法关键词缺失" }
+    # PS 5.1 Select-String -Path 用系统编码读文件，改用 .NET API 读 UTF-8
+    $skillFileContent = [System.IO.File]::ReadAllText($skillFile)
+    if ($skillFileContent -match "4.*底线|10.*铁律") { Check-Pass "契约层关键词完整（4底线+10铁律内联在 SKILL.md）" } else { Check-Fail "SKILL.md 内容异常——宪法关键词缺失" }
 } else { Check-Warn "SKILL.md 不存在，无法验证宪法内容" }
 
 $logsDir = Join-Path $sofagentData "task\logs"
@@ -207,9 +213,11 @@ foreach ($cs in @("audit.ps1", "task-record.ps1")) {
 # rules.md 合规配置段完整性
 $rulesCfg = @("$((Get-Location).Path)\sofagent\rules.md", "$up\.openclaw\skills\sofagent\rules.md", "$up\.workbuddy\skills\sofagent\rules.md", "$OPENCLAW_DIR\skills\sofagent\rules.md") | Where-Object { Test-Path $_ } | Select-Object -First 1
 if ($rulesCfg) {
+    # PS 5.1 Select-String -Path 用系统编码读文件，改用 .NET API 读 UTF-8
+    $rulesCfgContent = [System.IO.File]::ReadAllText($rulesCfg)
     $missing = 0
     foreach ($key in @("log_sanitize", "log_sanitize_ips", "data_retention_days", "data_retention_max_entries", "data_cleanup_on_record", "data_cleanup_frequency", "audit_enabled")) {
-        if (-not (Select-String -Path $rulesCfg -Pattern "${key}:" -Quiet)) { $missing++ }
+        if ($rulesCfgContent -notmatch "${key}:") { $missing++ }
     }
     if ($missing -eq 0) { Check-Pass "rules.md 合规配置段完整（7/7 配置项）" } else { Check-Warn "rules.md 合规配置段不完整（缺少 $missing/7 项）" }
 } else { Check-Warn "rules.md 未找到，无法验证合规配置段" }

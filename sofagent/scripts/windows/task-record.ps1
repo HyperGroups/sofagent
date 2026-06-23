@@ -88,6 +88,8 @@ function Get-SofagentData {
 
 # ── 从 stdin 读取 JSON 数组 ──
 if ($FromStdin) {
+    # PS 5.1 [Console]::In 默认用系统 OEM 编码，改用 UTF-8
+    try { [Console]::InputEncoding = New-Object System.Text.UTF8Encoding $false } catch {}
     $stdinData = [Console]::In.ReadToEnd()
     if (-not [string]::IsNullOrWhiteSpace($stdinData)) {
         $parsed = $null
@@ -136,7 +138,7 @@ if ($ClosureCheck) {
     $month = Get-Date -Format "yyyy-MM"
     $logFile = Join-Path (Get-SofagentData) "task\logs\$month\$today.md"
     if (Test-Path $logFile) {
-        $count = (Get-Content $logFile -ErrorAction SilentlyContinue | Where-Object { $_ -match '^## ' }).Count
+        $count = (Get-Content $logFile -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { $_ -match '^## ' }).Count
         Write-Host "CLOSURE_CHECK: $logFile 存在 $count 条记录 -> [OK] 已闭合"
     } else {
         Write-Host "CLOSURE_CHECK: $logFile 不存在 -> [X] 今日无闭环记录，需警惕"
