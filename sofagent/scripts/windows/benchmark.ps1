@@ -17,7 +17,7 @@ param(
     [string]$Platform = "",
     [string]$OutputDir = "",
     [switch]$Api,
-    [string]$Agent = "sofagent-harness",
+    [string]$Agent = "main",
     [switch]$Summary,
     [switch]$Help
 )
@@ -35,7 +35,8 @@ if ($Help) {
     Write-Host "  10 个标准化任务，半自动「带 vs 不带 sofagent」对比测试。"
     Write-Host "  -Platform 目标平台(必填)  -OutputDir 输出目录(默认 docs/benchmark/)"
     Write-Host "  -Summary 汇总已有结果"
-    Write-Host "  流程: 生成 10 个 prompt → WorkBuddy 手动跑 → 填结果 → 用 audit-log 取客观指标"
+    Write-Host "  -Api (仅 openclaw) 自动跑带 sofagent 侧  -Agent agent名(默认 main)"
+    Write-Host "  流程: 生成 10 个 prompt → WorkBuddy/OpenClaw 手动跑 → 填结果 → 用 audit-log 取客观指标"
     exit 0
 }
 if ([string]::IsNullOrEmpty($Platform)) { Write-Host "错误：需要 -Platform 参数 (workbuddy|openclaw|claude)"; exit 1 }
@@ -77,21 +78,30 @@ if ($Summary) {
 function Invoke-ApiTask($num, $prompt, $type) {
     W-Info "  [$num/$($TASKS.Count)] $type ..."
     $raw = ""
-    # 注：openclaw 2026.6.x 的 agent 子命令无 --timeout flag（.sh 用过，此处移除）
-    try { $raw = (& openclaw agent --agent $Agent --message $prompt --json 2>$null | Out-String) } catch { $raw = "" }
+    # 每任务独立 session-key，避免上下文污染影响判定（openclaw 2026.6.x --timeout 默认 600s）
+    $sessionKey = "sofagent-bm-task-$num"
+    try { $raw = (& openclaw agent --agent $Agent --session-key $sessionKey --message $prompt --json 2>$null | Out-String) } catch { $raw = "" }
     if ([string]::IsNullOrWhiteSpace($raw)) {
         W-Warn "    无响应——agent 不存在或超时"
-        return @{ pass = "FAIL"; status = "无响应"; tokens = "0"; steps = "0"; note = "agent 无响应" }
+        return @{ pass = "FAIL"; status = "无响应"; tokens = "0"; sessionId = "N/A"; replyText = ""; note = "agent 无响应" }
     }
     try {
         $j = $raw | ConvertFrom-Json
-        $status = if ($j.PSObject.Properties['status']) { "$($j.status)" } else { "UNKNOWN" }
-        $tokens = if ($j.PSObject.Properties['usage'] -and $j.usage.PSObject.Properties['total_tokens']) { $j.usage.total_tokens } elseif ($j.PSObject.Properties['tokens']) { $j.tokens } else { "N/A" }
-        $steps  = if ($j.PSObject.Properties['messages']) { @($j.messages).Count } elseif ($j.PSObject.Properties['steps']) { @($j.steps).Count } else { "N/A" }
-        $pass = if ($status -match 'success|ok|complete') { "PASS" } else { "FAIL" }
-        return @{ pass = $pass; status = $status; tokens = $tokens; steps = $steps; note = "API 自动跑" }
+        # 真实 JSON 结构（openclaw 2026.6.x）：
+        #   .payloads[0].text          → 回复文本
+        #   .meta.completion.stopReason → "stop"|"length"|"tool_use" 等
+        #   .meta.aborted              → bool
+        #   .meta.agentMeta.usage.total → 总 token 数
+        #   .meta.agentMeta.sessionId  → 本次 session id（填入报告）
+        $stopReason = if ($j.meta -and $j.meta.completion) { "$($j.meta.completion.stopReason)" } else { "UNKNOWN" }
+        $aborted    = if ($j.meta) { [bool]$j.meta.aborted } else { $true }
+        $tokens     = if ($j.meta -and $j.meta.agentMeta -and $j.meta.agentMeta.usage) { $j.meta.agentMeta.usage.total } else { "N/A" }
+        $sessionId  = if ($j.meta -and $j.meta.agentMeta) { "$($j.meta.agentMeta.sessionId)" } else { "N/A" }
+        $replyText  = if ($j.payloads -and @($j.payloads).Count -gt 0) { "$($j.payloads[0].text)" } else { "" }
+        $pass = if ($stopReason -eq "stop" -and -not $aborted) { "PASS" } else { "FAIL" }
+        return @{ pass = $pass; status = $stopReason; tokens = $tokens; sessionId = $sessionId; replyText = $replyText; note = "API 自动跑" }
     } catch {
-        return @{ pass = "FAIL"; status = "PARSE_ERROR"; tokens = "N/A"; steps = "N/A"; note = "JSON 解析失败" }
+        return @{ pass = "FAIL"; status = "PARSE_ERROR"; tokens = "N/A"; sessionId = "N/A"; replyText = ""; note = "JSON 解析失败: $($_.Exception.Message)" }
     }
 }
 
@@ -159,7 +169,8 @@ foreach ($t in $TASKS) {
     if ($autoResults[$t.n]) {
         $r = $autoResults[$t.n]
         Add-Line ""
-        Add-Line "**API 自动跑（带 sofagent · agent=$Agent）**：$($r.pass) · status=``$($r.status)`` · tokens=$($r.tokens) · steps=$($r.steps) · $($r.note)"
+        Add-Line "**API 自动跑（带 sofagent · agent=$Agent）**：$($r.pass) · stopReason=``$($r.status)`` · tokens=$($r.tokens) · sessionId=``$($r.sessionId)`` · $($r.note)"
+        if ($r.replyText) { Add-Line "> 回复摘要：``$($r.replyText.Substring(0, [Math]::Min(120, $r.replyText.Length)))``" }
         Add-Line "> 注：以上为 openclaw agent JSON 自报；客观判定仍以 audit-log 为准（上表）。"
     }
     Add-Line ""

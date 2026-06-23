@@ -11,8 +11,7 @@ scenarios: [Agent开始自由发挥偏离目标, 任务包含不可逆操作需�
 not_when: [简单闲聊, 单步查询, 纯信息检索]
 metadata:
   openclaw:
-    requires:
-      bins: [bash, mkdir]
+    requires: {}
 ---
 
 # SKILL.md · v0.84
