@@ -74,7 +74,6 @@ case "$PLATFORM" in
 esac
 
 OPENCLAW_DIR="$TARGET"
-SOFAGENT_DATA="${SOFAGENT_DATA:-${PWD}/.sofagent}"
 
 # ── 颜色 ──
 RED='\033[0;31m'
@@ -142,7 +141,7 @@ if [ "$QUICK_MODE" = true ]; then
   fi
 
   # 2. .sofagent/ 数据目录存在
-  if [ -d "$SOFAGENT_DATA" ]; then
+  if [ -d "${PWD}/.sofagent" ]; then
     check_pass ".sofagent/ 数据目录存在"
   else
     check_warn ".sofagent/ 数据目录不存在（首次使用会自动创建）"
@@ -229,7 +228,7 @@ if [ "$PLATFORM" = "workbuddy" ]; then
   fi
 
   # 数据目录检查
-  if [ -d "$SOFAGENT_DATA" ]; then
+  if [ -d "${PWD}/.sofagent" ]; then
     check_pass ".sofagent/ 数据目录存在"
   else
     check_warn ".sofagent/ 数据目录不存在（首次使用会自动创建）"
@@ -374,7 +373,7 @@ else
     fi
   fi
   # think.md 检查
-  THINK_FILE="${SOFAGENT_DATA}/think.md"
+  THINK_FILE="${PWD}/.sofagent/think.md"
   if [ -f "$THINK_FILE" ]; then
     check_pass "think.md 存在（$(wc -m < "$THINK_FILE" | tr -d ' ') 字符）"
   else
@@ -525,6 +524,7 @@ fi
 _hr
 _section "数据目录"
 
+SOFAGENT_DATA="${PWD}/.sofagent"
 if [ -d "$SOFAGENT_DATA" ]; then
   check_pass ".sofagent/ 数据目录存在"
   # 检查子目录
@@ -603,8 +603,8 @@ fi
 
 # 9.2 闸门通过率——数据层是否在运转
 [ "$JSON_MODE" = false ] && echo -n "  闸门通过率: "
-if [ -d "$SOFAGENT_DATA/task/logs" ]; then
-  recent_count=$(find "$SOFAGENT_DATA/task/logs" -name "*.md" -mtime -7 2>/dev/null | wc -l | tr -d ' ')
+if [ -d ".sofagent/task/logs" ]; then
+  recent_count=$(find ".sofagent/task/logs" -name "*.md" -mtime -7 2>/dev/null | wc -l | tr -d ' ')
   if [ "$recent_count" -gt 0 ]; then
     check_pass "最近7天有 ${recent_count} 条任务记录"
   else
@@ -616,9 +616,9 @@ fi
 
 # 9.3 反思更新频率
 [ "$JSON_MODE" = false ] && echo -n "  反思更新频率: "
-if [ -f "$SOFAGENT_DATA/think.md" ]; then
+if [ -f ".sofagent/think.md" ]; then
   # GNU stat (-c %Y) 优先，BSD/macOS (-f %m) 回退；原 BSD-only 写法在 Linux 上恒返回 0 → 永远报"超旧"
-  modified_sec=$(($(date +%s) - $(stat -c %Y "$SOFAGENT_DATA/think.md" 2>/dev/null || stat -f %m "$SOFAGENT_DATA/think.md" 2>/dev/null || echo 0)))
+  modified_sec=$(($(date +%s) - $(stat -c %Y ".sofagent/think.md" 2>/dev/null || stat -f %m ".sofagent/think.md" 2>/dev/null || echo 0)))
   modified_days=$((modified_sec / 86400))
   if [ "$modified_days" -le 3 ]; then
     check_pass "think.md ${modified_days} 天前更新（活跃）"
@@ -806,6 +806,7 @@ if [ "$JSON_MODE" = false ] && [ "${QUICK_MODE:-false}" = false ]; then
 fi
 [ "$JSON_MODE" = false ] && [ "$QUIET_MODE" = false ] && [ "${QUICK_MODE:-false}" = false ] && echo -e "${BOLD}${YELLOW}daemon 状态${NC}"
 
+SOFAGENT_DATA="${PWD}/.sofagent"
 DAEMON_PID_FILE="${SOFAGENT_DATA}/daemon.pid"
 DAEMON_JSON="${SOFAGENT_DATA}/daemon.json"
 

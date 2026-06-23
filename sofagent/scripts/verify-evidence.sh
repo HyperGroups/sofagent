@@ -16,7 +16,7 @@ DAEMON_MODE=false
 
 TODAY=$(date +"%Y-%m-%d")
 MONTH=$(date +"%Y-%m")
-LOG_FILE="${SOFAGENT_DATA:-${PWD}/.sofagent}/task/logs/${MONTH}/${TODAY}.md"
+LOG_FILE="${PWD}/.sofagent/task/logs/${MONTH}/${TODAY}.md"
 
 [ "$DAEMON_MODE" = false ] && echo "sofagent verify-evidence v${VERSION}"
 [ "$DAEMON_MODE" = false ] && echo "扫描目标: ${LOG_FILE}"

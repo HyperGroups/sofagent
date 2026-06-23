@@ -58,9 +58,11 @@ while [[ $# -gt 0 ]]; do
       echo "    全自动：bash benchmark.sh --platform openclaw --api（直接调 openclaw agent 跑 10 个任务）"
       exit 0
       ;;
-    --summary) SUMMARY_ONLY=true; shift ;;
-    --api)     API_MODE=true; shift ;;
-    *) echo "未知参数: $1（--help 查看用法）"; exit 1 ;;
+    --summary)
+      SUMMARY_ONLY=true; shift ;;
+    --api)
+      API_MODE=true; shift ;;
+    *) shift ;;
   esac
 done
 
@@ -71,6 +73,17 @@ if [ -z "$PLATFORM" ]; then
 fi
 
 PLATFORM="$(echo "$PLATFORM" | tr '[:upper:]' '[:lower:]')"
+
+# ── 确定脚本目录和输出路径 ──
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+if [ -z "$OUTPUT_DIR" ]; then
+  OUTPUT_DIR="${REPO_ROOT}/docs/benchmark"
+fi
+mkdir -p "$OUTPUT_DIR"
+
+TODAY="$(date '+%Y-%m-%d')"
+OUTPUT_FILE="${OUTPUT_DIR}/${TODAY}.md"
 
 # ── 10 个标准化任务定义 ──
 # 格式：编号|类型|测试维度|预期差异|prompt|判定标准
