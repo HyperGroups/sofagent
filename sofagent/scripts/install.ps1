@@ -196,6 +196,25 @@ if ($copied -gt 0) {
 }
 
 # ════════════════════════════════════════
+# Step 2.5: 部署 .ps1 运行时脚本（供 {OPENCLAW_SCRIPTS} 在部署后解析）
+# ════════════════════════════════════════
+Write-Info "部署运行时脚本 → $TARGET\scripts\"
+$scriptsDst = Join-Path $TARGET "scripts"
+$libDst = Join-Path $scriptsDst "lib"
+New-Item -ItemType Directory -Force -Path $libDst | Out-Null
+$psCount = 0
+Get-ChildItem -Path $SCRIPT_DIR -Filter *.ps1 -File | ForEach-Object {
+    Copy-Item $_.FullName (Join-Path $scriptsDst $_.Name) -Force; $psCount++
+}
+$libSrc = Join-Path $SCRIPT_DIR "lib"
+if (Test-Path $libSrc) {
+    Get-ChildItem -Path $libSrc -Filter *.ps1 -File | ForEach-Object {
+        Copy-Item $_.FullName (Join-Path $libDst $_.Name) -Force; $psCount++
+    }
+}
+Write-Ok "$psCount 个 .ps1 脚本已部署到 $scriptsDst"
+
+# ════════════════════════════════════════
 # Step 3: 部署 rules.md
 # ════════════════════════════════════════
 Write-Info "Step 3/4 · 部署宪法文件 → $TARGET\rules.md"

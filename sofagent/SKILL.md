@@ -38,6 +38,12 @@ metadata:
 > 💡 `{OPENCLAW_SCRIPTS}` = 优先 `${HOME}/.openclaw/scripts/`；若不存在则 Agent 自行搜索 `sofagent/scripts/`（项目目录下的脚本）。
 > 第 1 层是宪法（不可变）、第 2 层是错题本、第 3 层是你说了算。
 
+> 🖥️ **跨平台脚本调用约定（重要）**：下文所有 `bash {OPENCLAW_SCRIPTS}/X.sh --flag value` 形式，按当前环境**二选一**：
+> - **有 bash 的环境**（Linux / macOS / WSL / Git Bash）：照写 `bash {OPENCLAW_SCRIPTS}/X.sh --flag value`
+> - **纯 Windows PowerShell（非 WSL，无 bash）**：改用 `powershell -File {OPENCLAW_SCRIPTS}/X.ps1 -Flag value`
+>   - 脚本名 `.sh`→`.ps1`；参数 kebab-case→PascalCase：`--closure-check`→`-ClosureCheck`、`--budget`→`-Budget`、`--task`→`-Task`、`--result`→`-Result`、`--steps`→`-Steps`、`--limit`→`-Limit`、`--model`→`-Model`、`--operation`→`-Operation`、`--checkpoint`→`-Checkpoint`、`--from-stdin`→`-FromStdin`
+> - 判断：环境能跑 `bash` 就用 `.sh`；否则（如 Windows 上的 WorkBuddy）用 `.ps1`。两套脚本行为对齐。
+
 ---
 
 ## 📜 契约（第 1 层 · 本文件内联）
