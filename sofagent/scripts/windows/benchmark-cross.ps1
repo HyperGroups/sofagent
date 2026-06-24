@@ -199,25 +199,37 @@ function Set-SofagentContext([bool]$enable) {
     if ($enable) {
         $parts = [System.Collections.Generic.List[string]]::new()
 
-        # L1: 宪法（SKILL.md 全文，skill 系统仅注入 description ≈240 chars，此处补注全文）
-        $skillPath = Join-Path $ocDir "skills\sofagent\SKILL.md"
-        if (Test-Path $skillPath) {
-            $parts.Add("<!-- ===== sofagent L1：宪法（SKILL.md）===== -->")
-            $parts.Add([System.IO.File]::ReadAllText($skillPath, [System.Text.Encoding]::UTF8))
+        # 嵌入模式约束注入策略：
+        # 优先注入 constraints.md（聚焦行为约束，无框架元指令）而非 SKILL.md 全文。
+        # SKILL.md 含加载链框架（A0 复杂度预判/回复前闸门）在嵌入模式下会激活"任务执行优先"
+        # 思维模式，反而抑制模型原有的谨慎行为，导致 ON < OFF（负增量）。
+        $constraintsPath = Join-Path $ocDir "skills\sofagent\constraints.md"
+        if (Test-Path $constraintsPath) {
+            $parts.Add("<!-- ===== sofagent 行为约束（constraints.md）===== -->")
+            $parts.Add([System.IO.File]::ReadAllText($constraintsPath, [System.Text.Encoding]::UTF8))
         } else {
-            W-Warn "SKILL.md 不存在：$skillPath（跳过 L1 注入）"
+            # fallback: SKILL.md（旧行为，保留兼容）
+            $skillPath = Join-Path $ocDir "skills\sofagent\SKILL.md"
+            if (Test-Path $skillPath) {
+                $parts.Add("<!-- ===== sofagent L1：宪法（SKILL.md，fallback）===== -->")
+                $parts.Add([System.IO.File]::ReadAllText($skillPath, [System.Text.Encoding]::UTF8))
+                W-Warn "constraints.md 不存在（$constraintsPath），fallback 到 SKILL.md（含框架元指令，可能引起负增量）"
+            } else {
+                W-Warn "constraints.md 和 SKILL.md 均不存在，跳过约束注入"
+            }
         }
 
-        # L3: 用户规则（rules.md，优先级同 handler.ts）
-        $rulesCandidates = @(
-            (Join-Path $ocDir "skills\sofagent\rules.md"),
-            (Join-Path $ocDir "skills\sofagent\constitution\rules.md"),
-            (Join-Path $ocDir "rules.md")
-        )
-        $rulesPath = @($rulesCandidates | Where-Object { Test-Path $_ })[0]
-        if ($rulesPath) {
-            $parts.Add("<!-- ===== sofagent L3：用户规则（rules.md）===== -->")
-            $parts.Add([System.IO.File]::ReadAllText($rulesPath, [System.Text.Encoding]::UTF8))
+        # L3: 用户规则（rules.md，优先级最高，可覆盖 constraints）
+        $rulesPath = Join-Path $ocDir "skills\sofagent\rules.md"
+        if (-not (Test-Path $rulesPath)) { $rulesPath = Join-Path $ocDir "rules.md" }
+        if (Test-Path $rulesPath) {
+            $rulesContent = [System.IO.File]::ReadAllText($rulesPath, [System.Text.Encoding]::UTF8)
+            # 只注入非空 rules.md（跳过全注释模板，避免将空模板误作约束）
+            $activeLines = ($rulesContent -split "`n" | Where-Object { $_ -match "^\s*[^#\s]" }).Count
+            if ($activeLines -gt 0) {
+                $parts.Add("<!-- ===== sofagent L3：用户规则（rules.md）===== -->")
+                $parts.Add($rulesContent)
+            }
         }
 
         if ($parts.Count -eq 0) { W-Warn "sofagent 约束文件均不存在，跳过注入"; return }
@@ -462,6 +474,7 @@ function Invoke-CrossTask($taskN, $prompt, $passIfPat, $failIfPat, $modelId, $so
             $reason = "passIf 未中"
         }
 
+        W-Step "    └─ $pass · tokens=$tokens · $reason"
         return @{ pass=$pass; reason=$reason; stopReason=$stopReason; tokens=$tokens; sessionId=$sessionId; reply=$reply }
     } catch {
         return @{ pass="ERR"; reason="PARSE_ERR:$($_.Exception.Message)"; stopReason="N/A"; tokens=0; sessionId="N/A"; reply="" }

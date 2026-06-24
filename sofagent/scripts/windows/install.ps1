@@ -217,6 +217,19 @@ if (Test-Path $_rulesSrc2) {
     if ($_needCopy2) { Copy-Item $_rulesSrc2 $_rulesDst2 -Force; Write-Ok "rules.md → $SKILL_DST" }
 }
 
+# constraints.md 同步到 skills/sofagent/（嵌入模式行为约束注入源，替代 SKILL.md 避免框架元指令干扰）
+$_constraintsSrc = Join-Path $SKILL_SRC_DIR "skills\sofagent\constraints.md"
+$_constraintsDst = Join-Path $SKILL_DST "constraints.md"
+if (Test-Path $_constraintsSrc) {
+    $_needCopyC = $true
+    if (Test-Path $_constraintsDst) {
+        if ((Get-FileHash $_constraintsSrc -Algorithm SHA256).Hash -eq (Get-FileHash $_constraintsDst -Algorithm SHA256).Hash) { $_needCopyC = $false }
+    }
+    if ($_needCopyC) { Copy-Item $_constraintsSrc $_constraintsDst -Force; Write-Ok "constraints.md → $SKILL_DST" }
+} else {
+    Write-Warn "constraints.md 源文件不存在：$_constraintsSrc（嵌入模式约束注入将 fallback 到 SKILL.md）"
+}
+
 # v0.84: SKILL.md 部署后确保 disable: true（防止安装副本被平台自动加载）
 $deployedSkill = Join-Path $SKILL_DST "SKILL.md"
 if (Test-Path $deployedSkill) {
