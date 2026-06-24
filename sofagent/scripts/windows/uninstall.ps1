@@ -12,9 +12,10 @@
 # ============================================================
 
 param(
-    [string]$Platform = "",
+    [string]$Platform       = "",
     [switch]$Force,
     [switch]$List,
+    [switch]$CleanBenchmark,    # 清理 benchmark-cross.ps1 自动写入的模型配置
     [switch]$Help
 )
 
@@ -34,14 +35,16 @@ if ($Help) {
     Write-Host ""
     Write-Host "用法:"
     Write-Host "    .\uninstall.ps1 -Platform workbuddy"
-    Write-Host "    .\uninstall.ps1 -Force      跳过确认直接删除"
-    Write-Host "    .\uninstall.ps1 -List       仅列出将删除项，不执行"
+    Write-Host "    .\uninstall.ps1 -Force          跳过确认直接删除"
+    Write-Host "    .\uninstall.ps1 -List           仅列出将删除项，不执行"
+    Write-Host "    .\uninstall.ps1 -CleanBenchmark 清理 benchmark-cross 写入的模型配置"
     Write-Host ""
     Write-Host "参数:"
-    Write-Host "    -Platform   目标平台 (workbuddy|openclaw|claude|codex|hermes)"
-    Write-Host "    -Force      跳过交互确认"
-    Write-Host "    -List       预览将删除的文件"
-    Write-Host "    -Help       显示此帮助"
+    Write-Host "    -Platform       目标平台 (workbuddy|openclaw|claude|codex|hermes)"
+    Write-Host "    -Force          跳过交互确认（不自动清理 benchmark 配置，需加 -CleanBenchmark）"
+    Write-Host "    -List           预览将删除的文件"
+    Write-Host "    -CleanBenchmark 清理 benchmark-cross.ps1 自动添加的模型条目"
+    Write-Host "    -Help           显示此帮助"
     Write-Host ""
     Write-Host "保留: .sofagent/ 数据目录 (如需清除请手动删除)"
     exit 0
@@ -139,7 +142,7 @@ foreach ($t in $targets) {
     else { Write-Err "删除失败: $t" }
 }
 
-# OpenClaw 专属清理：Hook + openclaw.json 注销 + config.json loopDetection + daemon（对齐 uninstall.sh）
+# OpenClaw 专属清理：Hook + openclaw.json 注销 + config.json loopDetection + benchmark 状态（对齐 uninstall.sh）
 if ($Platform -eq "openclaw") {
     $utf8b = New-Object System.Text.UTF8Encoding $false
     $hookDir = Join-Path $TARGET "hooks\sofagent-load-chain"
@@ -165,6 +168,47 @@ if ($Platform -eq "openclaw") {
                 Write-Ok "已移除 config.json 中的 loopDetection"
             }
         } catch { Write-Warn "config.json 清理失败：$($_.Exception.Message)" }
+    }
+
+    # Benchmark 状态清理：benchmark-cross.ps1 自动添加的模型条目
+    $benchState = Join-Path $TARGET "sofagent-benchmark-state.json"
+    if (Test-Path $benchState) {
+        try {
+            $state       = Get-Content $benchState -Raw -Encoding UTF8 | ConvertFrom-Json
+            $addedModels = @($state.addedModels | Where-Object { $_ })
+            if ($addedModels.Count -gt 0) {
+                Write-Host ""
+                Write-Warn "检测到 benchmark-cross.ps1 曾自动添加的模型配置："
+                $addedModels | ForEach-Object { Write-Host "      - $_" -ForegroundColor DarkYellow }
+                Write-Host ""
+
+                $doClean = if ($CleanBenchmark) {
+                    $true
+                } elseif ($List) {
+                    Write-Host "      (-List 模式：跳过清理决策)"
+                    $false
+                } else {
+                    $ans = Read-Host "  是否从 openclaw.json 中移除这些模型配置? [y/N]"
+                    $ans -match '^[yY]'
+                }
+
+                if ($doClean -and (Test-Path $ocCfg)) {
+                    $jj = Get-Content $ocCfg -Raw -Encoding UTF8 | ConvertFrom-Json
+                    foreach ($mid in $addedModels) {
+                        if ($jj.agents -and $jj.agents.defaults -and $jj.agents.defaults.models -and
+                            $jj.agents.defaults.models.PSObject.Properties[$mid]) {
+                            $jj.agents.defaults.models.PSObject.Properties.Remove($mid)
+                            Write-Ok "已从允许列表移除：$mid"
+                        }
+                    }
+                    [System.IO.File]::WriteAllText($ocCfg, ($jj | ConvertTo-Json -Depth 10), $utf8b)
+                    Remove-Item $benchState -Force -EA SilentlyContinue
+                    Write-Ok "benchmark 状态文件已清除"
+                } else {
+                    Write-Info "保留 benchmark 模型配置（sofagent-benchmark-state.json 仍在）"
+                }
+            }
+        } catch { Write-Warn "benchmark 状态清理失败：$($_.Exception.Message)" }
     }
 }
 
