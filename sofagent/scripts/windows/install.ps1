@@ -205,6 +205,18 @@ if ($copied -gt 0) {
     Write-Ok "Skill 文件全部就绪（无变更）"
 }
 
+# rules.md 同步到 skills/sofagent/（AGENTS.md 注入优先查此路径，高于 $TARGET/rules.md）
+$_rulesSrc2 = Join-Path $SKILL_SRC_DIR "rules.md"
+if (-not (Test-Path $_rulesSrc2)) { $_rulesSrc2 = Join-Path $SKILL_SRC_DIR "constitution\rules.md" }
+$_rulesDst2 = Join-Path $SKILL_DST "rules.md"
+if (Test-Path $_rulesSrc2) {
+    $_needCopy2 = $true
+    if (Test-Path $_rulesDst2) {
+        if ((Get-FileHash $_rulesSrc2 -Algorithm SHA256).Hash -eq (Get-FileHash $_rulesDst2 -Algorithm SHA256).Hash) { $_needCopy2 = $false }
+    }
+    if ($_needCopy2) { Copy-Item $_rulesSrc2 $_rulesDst2 -Force; Write-Ok "rules.md → $SKILL_DST" }
+}
+
 # v0.84: SKILL.md 部署后确保 disable: true（防止安装副本被平台自动加载）
 $deployedSkill = Join-Path $SKILL_DST "SKILL.md"
 if (Test-Path $deployedSkill) {
@@ -357,6 +369,8 @@ if ($Platform -eq "openclaw") {
             [System.IO.File]::WriteAllText($ocCfg, ($j | ConvertTo-Json -Depth 10), $utf8b)
             Write-Ok "Hook 已注册: $ocCfg"
         } catch { Write-Warn "openclaw.json 注册失败（含注释/格式问题？）：$($_.Exception.Message)。手动加 hooks.internal.entries.sofagent-load-chain" }
+        Write-Warn "Hook 说明：loadInternalHooks() 仅在 gateway 进程启动时调用，relay/embedded 模式下 hook 不触发。"
+        Write-Warn "  → 实际约束注入路径：workspace/AGENTS.md（benchmark-cross.ps1 的 Set-SofagentContext 写入此文件）"
     } else { Write-Warn "找不到 hook 源文件（$hookSrc），跳过" }
 
     # ── 断路器 loopDetection（受 -NoConfigInject 控）──
