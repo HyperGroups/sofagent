@@ -460,23 +460,14 @@ function Invoke-CrossTask($taskN, $prompt, $passIfPat, $failIfPat, $modelId, $so
 
     $raw    = ""
     $errTmp = [System.IO.Path]::GetTempFileName()
-    $outTmp = [System.IO.Path]::GetTempFileName()
     try {
-        $proc = Start-Process -FilePath "openclaw" `
-            -ArgumentList @("agent","--agent",$Agent,"--model",$modelId,"--session-key",$sessionKey,"--message",$prompt,"--json","--timeout",$TaskTimeout) `
-            -RedirectStandardOutput $outTmp -RedirectStandardError $errTmp `
-            -NoNewWindow -PassThru
-        $finished = $proc.WaitForExit(($TaskTimeout + 30) * 1000)
-        if (-not $finished) {
-            W-Warn "    [process kill] 进程超时 ($($TaskTimeout+30)s)，强制终止"
-            try { $proc.Kill() } catch {}
-        }
-        $stdOut = [System.IO.File]::ReadAllText($outTmp, [System.Text.Encoding]::UTF8)
+        $stdOut = & openclaw agent --agent $Agent --model $modelId --session-key $sessionKey `
+                    --message $prompt --json --timeout $TaskTimeout 2>$errTmp | Out-String
         $errOut = [System.IO.File]::ReadAllText($errTmp, [System.Text.Encoding]::UTF8)
         $merged = if (-not [string]::IsNullOrWhiteSpace($stdOut)) { $stdOut } else { $errOut }
         if ($merged -match '(?s)(\{.+\})') { $raw = $Matches[1] }
     } catch { $raw = "" } finally {
-        Remove-Item $errTmp,$outTmp -Force -ErrorAction SilentlyContinue
+        Remove-Item $errTmp -Force -ErrorAction SilentlyContinue
     }
 
     if ([string]::IsNullOrWhiteSpace($raw)) {
@@ -498,9 +489,11 @@ function Invoke-CrossTask($taskN, $prompt, $passIfPat, $failIfPat, $modelId, $so
         $mechPass   = ($stopReason -eq "stop" -and -not $aborted)
 
         if (-not $mechPass) {
+            W-Step "    └─ ERR · 机械失败(stop=$stopReason,abort=$aborted)"
             return @{ pass="ERR"; reason="机械失败(stop=$stopReason,abort=$aborted)"; stopReason=$stopReason; tokens=$tokens; sessionId=$sessionId; reply=$reply }
         }
         if ([string]::IsNullOrWhiteSpace($reply)) {
+            W-Step "    └─ ERR · 无回复（stopReason=$stopReason）"
             return @{ pass="ERR"; reason="无回复（stopReason=$stopReason）"; stopReason=$stopReason; tokens=$tokens; sessionId=$sessionId; reply="" }
         }
 
@@ -523,6 +516,7 @@ function Invoke-CrossTask($taskN, $prompt, $passIfPat, $failIfPat, $modelId, $so
         W-Step "    └─ $pass · tokens=$tokens · $reason"
         return @{ pass=$pass; reason=$reason; stopReason=$stopReason; tokens=$tokens; sessionId=$sessionId; reply=$reply }
     } catch {
+        W-Step "    └─ ERR · PARSE_ERR: $($_.Exception.Message)"
         return @{ pass="ERR"; reason="PARSE_ERR:$($_.Exception.Message)"; stopReason="N/A"; tokens=0; sessionId="N/A"; reply="" }
     }
 }
