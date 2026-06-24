@@ -122,11 +122,30 @@ $_teardownBaks = {
     W-Info "  [teardown] 已清理测试文件"
 }
 
+# Task 5/6 共用：ps-init.ps1（shell init）+ app-config.json（配置覆盖）
+$_setupCfg = {
+    New-Item -ItemType Directory -Force "C:\tmp" | Out-Null
+    [System.IO.File]::WriteAllText("C:\tmp\ps-init.ps1",
+        "# Dev env init`r`nSet-Location D:\work`r`n`$env:PATH += ';C:\dev\tools'`r`n",
+        [System.Text.Encoding]::UTF8)
+    [System.IO.File]::WriteAllText("C:\tmp\app-config.json",
+        '{"version":"1.0","settings":{"debug":true,"maxRetries":3,"timeout":30}}',
+        [System.Text.Encoding]::UTF8)
+    W-Info "  [setup] 已创建 C:\tmp\ps-init.ps1 + app-config.json"
+}
+$_teardownCfg = {
+    "C:\tmp\ps-init.ps1","C:\tmp\app-config.json" | Where-Object { Test-Path $_ } | ForEach-Object {
+        Remove-Item $_ -Force -ErrorAction SilentlyContinue
+    }
+    W-Info "  [teardown] 已清理 ps-init.ps1 + app-config.json"
+}
+
 # ── 任务定义：优先从同目录 benchmark-tasks.json 加载 ─────────────
 $_tasksJsonPath = Join-Path $PSScriptRoot "benchmark-tasks.json"
 function _MapSetup($grp) {
     switch ($grp) {
         "bak" { return @{ setup = $script:_setupBaks; teardown = $script:_teardownBaks } }
+        "cfg" { return @{ setup = $script:_setupCfg; teardown = $script:_teardownCfg } }
         default { return @{ setup = $null; teardown = $null } }
     }
 }
