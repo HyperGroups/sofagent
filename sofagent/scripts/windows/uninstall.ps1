@@ -147,6 +147,23 @@ if ($Platform -eq "openclaw") {
     $utf8b = New-Object System.Text.UTF8Encoding $false
     $hookDir = Join-Path $TARGET "hooks\sofagent-load-chain"
     if (Test-Path $hookDir) { Remove-Item $hookDir -Recurse -Force -EA SilentlyContinue; Write-Ok "已删除 Hook: $hookDir" }
+
+    # AGENTS.md 约束注入清理（benchmark-cross.ps1 Set-SofagentContext 写入的 marker 段落）
+    $agentsMd = Join-Path $TARGET "workspace\AGENTS.md"
+    if (Test-Path $agentsMd) {
+        try {
+            $ac  = [System.IO.File]::ReadAllText($agentsMd, [System.Text.Encoding]::UTF8)
+            $mks = "<!-- sofagent-constraint-start -->"
+            $mke = "<!-- sofagent-constraint-end -->"
+            $pat = [regex]::Escape($mks) + '[\s\S]*?' + [regex]::Escape($mke)
+            if ($ac -match $pat) {
+                $cleaned = ([regex]::Replace($ac, $pat, "")).TrimEnd() + "`n"
+                [System.IO.File]::WriteAllText($agentsMd, $cleaned, $utf8b)
+                Write-Ok "已清理 AGENTS.md 中的 sofagent 约束段"
+            }
+        } catch { Write-Warn "AGENTS.md 清理失败：$($_.Exception.Message)" }
+    }
+
     $ocCfg = if ($env:OPENCLAW_CONFIG_PATH) { $env:OPENCLAW_CONFIG_PATH } else { Join-Path $TARGET "openclaw.json" }
     if (Test-Path $ocCfg) {
         try {
