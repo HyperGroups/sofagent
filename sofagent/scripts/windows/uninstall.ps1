@@ -175,7 +175,7 @@ if ($Platform -eq "openclaw") {
             }
         } catch { Write-Warn "openclaw.json 注销失败：$($_.Exception.Message)" }
     }
-    $cfgFile = if ($env:OPENCLAW_CONFIG_PATH) { $env:OPENCLAW_CONFIG_PATH } else { Join-Path $TARGET "config.json" }
+    $cfgFile = Join-Path $TARGET "config.json"
     if (Test-Path $cfgFile) {
         try {
             $cf = Get-Content $cfgFile -Raw -Encoding UTF8 | ConvertFrom-Json

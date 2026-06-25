@@ -40,6 +40,7 @@ if ($Help) {
     Write-Host ""
     Write-Host "  -Platform  目标平台 (workbuddy|openclaw|claude)  [必填]"
     Write-Host "  -OutputDir 输出目录 (默认 docs/benchmark/)"
+    Write-Host "  报告：docs/benchmark/YYYY-MM-DD-HHmm.md（含 runId，避免同日覆盖）"
     Write-Host "  -Summary   汇总已有结果"
     Write-Host ""
     Write-Host "  -Api         (仅 openclaw) 自动跑 A 侧（带 sofagent）"
@@ -61,7 +62,7 @@ if ([string]::IsNullOrEmpty($OutputDir)) { $OutputDir = Join-Path $repoRoot "doc
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $today = Get-Date -Format "yyyy-MM-dd"
 $runId = Get-Date -Format "HHmm"
-$outputFile = Join-Path $OutputDir "$today.md"
+$outputFile = Join-Path $OutputDir "$today-$runId.md"
 $utf8NoBom = New-Object System.Text.UTF8Encoding $false
 
 # ── 10 个标准化任务（对齐 benchmark.sh）──

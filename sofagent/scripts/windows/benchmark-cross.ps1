@@ -51,7 +51,7 @@ if ($Help) {
     Write-Host "  -Agent           openclaw agent 名（默认 main）"
     Write-Host "  -OutputDir       报告输出目录（默认 docs/benchmark/）"
     Write-Host ""
-    Write-Host "  报告：docs/benchmark/YYYY-MM-DD-cross.md"
+    Write-Host "  报告：docs/benchmark/YYYY-MM-DD-cross-HHmm.md（含 runId，避免同日覆盖）"
     Write-Host "  状态：~/.openclaw/sofagent-benchmark-state.json（卸载时可选清理）"
     exit 0
 }
@@ -80,7 +80,7 @@ if ([string]::IsNullOrEmpty($OutputDir)) { $OutputDir = Join-Path $repoRoot "doc
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $today      = Get-Date -Format "yyyy-MM-dd"
 $runId      = Get-Date -Format "HHmm"
-$outputFile = Join-Path $OutputDir "$today-cross.md"
+$outputFile = Join-Path $OutputDir "$today-cross-$runId.md"
 $utf8NoBom  = New-Object System.Text.UTF8Encoding $false
 
 function Get-OpenclawConfigPath {

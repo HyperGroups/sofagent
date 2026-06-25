@@ -23,6 +23,7 @@ param(
     [switch]$NoDaemon,
     [switch]$WithDaemon,
     [switch]$Quick,
+    [switch]$Ci,
     [switch]$Lite,
     [switch]$Help
 )
@@ -32,6 +33,8 @@ $VERSION = "0.91"
 
 # v0.85: Lite = Quick + NoAO + NoDaemon + NoConfigInject
 if ($Lite) { $Quick = $true; $NoAO = $true; $NoDaemon = $true; $NoConfigInject = $true }
+# --ci = --quick（CI 非交互安装，对齐 install.sh）
+if ($Ci) { $Quick = $true }
 
 # ── 颜色输出 ──
 function Write-Info  { param($msg) Write-Host "[sofagent] $msg" -ForegroundColor Cyan }
@@ -56,7 +59,8 @@ if ($Help) {
     Write-Host "  -NoConfigInject  跳过 OpenClaw 断路器 loopDetection 注入"
     Write-Host "  -NoDaemon        跳过 daemon 安装（默认行为；需 daemon 时用 -WithDaemon）"
     Write-Host "  -WithDaemon      安装后台 daemon（Windows 计划任务，监控 think.md/rules.md）"
-    Write-Host "  -Quick           快速模式——跳过交互确认"
+    Write-Host "  -Quick           快速模式——跳过欢迎横幅与冗长收尾提示"
+    Write-Host "  -Ci              CI 模式（= -Quick，非交互安装）"
     Write-Host "  -Lite            精简模式——仅部署核心约束文件，跳过脚本/Hook/daemon（= -Quick -NoAO -NoDaemon -NoConfigInject）"
     Write-Host "  -Help            显示此帮助"
     Write-Host ""
@@ -72,12 +76,14 @@ if ($Help) {
 }
 
 # ── 环境检测 ──
-Write-Host ""
-Write-Host "  +===================================+"
-Write-Host "  |   sofagent Harness · installer    |"
-Write-Host "  |   (Windows PowerShell)            |"
-Write-Host "  +===================================+"
-Write-Host ""
+if (-not $Quick) {
+    Write-Host ""
+    Write-Host "  +===================================+"
+    Write-Host "  |   sofagent Harness · installer    |"
+    Write-Host "  |   (Windows PowerShell)            |"
+    Write-Host "  +===================================+"
+    Write-Host ""
+}
 
 # 检测是否在 WSL 中运行（仅认 WSL_DISTRO_NAME——WSLENV 在装了 WSL 的 Windows 主机上也会被设，不能作判据）
 if ($env:WSL_DISTRO_NAME) {
@@ -430,9 +436,10 @@ if ($Platform -eq "openclaw" -and -not $Lite) {
     } else { Write-Warn "找不到 hook 源文件（$hookSrc），跳过" }
 
     # ── 断路器 loopDetection（受 -NoConfigInject 控）──
+    # loopDetection 写入 config.json；openclaw.json 仅用于 Hook（OPENCLAW_CONFIG_PATH 不混用）
     if (-not $NoConfigInject) {
         Write-Info "OpenClaw · 注入断路器 loopDetection..."
-        $cfgFile = if ($env:OPENCLAW_CONFIG_PATH) { $env:OPENCLAW_CONFIG_PATH } else { Join-Path $TARGET "config.json" }
+        $cfgFile = Join-Path $TARGET "config.json"
         try {
             $cf = if (Test-Path $cfgFile) { Get-Content $cfgFile -Raw -Encoding UTF8 | ConvertFrom-Json } else { [pscustomobject]@{} }
             if ($cf.PSObject.Properties['tools'] -and $cf.tools.PSObject.Properties['loopDetection']) {
@@ -492,7 +499,7 @@ if ($WithDaemon -and -not $Lite) {
         try { & powershell -NoProfile -ExecutionPolicy Bypass -File $daemonInstall }
         catch { Write-Warn "daemon 安装失败：$($_.Exception.Message)（可稍后手动运行 daemon-install.ps1）" }
     } else { Write-Warn "找不到 daemon-install.ps1，跳过" }
-} else {
+} elseif (-not $Quick) {
     Write-Info "(未加 -WithDaemon) 跳过 daemon。需后台监控可加 -WithDaemon 或手动 daemon-install.ps1"
 }
 
@@ -514,30 +521,34 @@ if ($Lite) {
     exit 0
 }
 
-Write-Host ""
-Write-Host "  +====================================+"
-Write-Host "  |  sofagent · 安装完成！             |"
-Write-Host "  +====================================+"
-Write-Host ""
-Write-Host "  平台: $Platform"
-Write-Host "  已部署文件："
-Write-Host "    Skill 文件:  $SKILL_DST"
-Write-Host "    宪法文件:    $rulesDst"
-Write-Host "    数据目录:    $SOFAGENT_DATA"
-if ($Platform -eq "openclaw") {
-    Write-Host "    加载链 Hook: $TARGET\hooks\sofagent-load-chain\"
-}
-if ($SEED_FILE) {
-    Write-Host "    种子指令:    $SEED_FILE"
-}
-Write-Host ""
-Write-Host "  下一步："
-if ($Platform -in @("claude", "codex", "hermes")) {
-    Write-Host "    1. 种子指令已写入 $SEED_FILE"
-    Write-Host "    2. 开始新对话，回复 'sofagent' 验证加载链是否生效"
+if ($Quick) {
+    Write-Ok "安装完成（quick）：$Platform → $TARGET | 数据: $SOFAGENT_DATA"
 } else {
-    Write-Host "    1. 在 $Platform 中打开项目: $ProjectDir"
-    Write-Host "    2. 开始新对话，sofagent Skill 应自动加载"
-    Write-Host "    3. 回复 'sofagent' 验证是否加载成功"
+    Write-Host ""
+    Write-Host "  +====================================+"
+    Write-Host "  |  sofagent · 安装完成！             |"
+    Write-Host "  +====================================+"
+    Write-Host ""
+    Write-Host "  平台: $Platform"
+    Write-Host "  已部署文件："
+    Write-Host "    Skill 文件:  $SKILL_DST"
+    Write-Host "    宪法文件:    $rulesDst"
+    Write-Host "    数据目录:    $SOFAGENT_DATA"
+    if ($Platform -eq "openclaw") {
+        Write-Host "    加载链 Hook: $TARGET\hooks\sofagent-load-chain\"
+    }
+    if ($SEED_FILE) {
+        Write-Host "    种子指令:    $SEED_FILE"
+    }
+    Write-Host ""
+    Write-Host "  下一步："
+    if ($Platform -in @("claude", "codex", "hermes")) {
+        Write-Host "    1. 种子指令已写入 $SEED_FILE"
+        Write-Host "    2. 开始新对话，回复 'sofagent' 验证加载链是否生效"
+    } else {
+        Write-Host "    1. 在 $Platform 中打开项目: $ProjectDir"
+        Write-Host "    2. 开始新对话，sofagent Skill 应自动加载"
+        Write-Host "    3. 回复 'sofagent' 验证是否加载成功"
+    }
+    Write-Host ""
 }
-Write-Host ""

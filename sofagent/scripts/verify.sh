@@ -548,10 +548,8 @@ fi
 _hr
 _section "断路器配置"
 
+# loopDetection 在 config.json（与 openclaw.json 分离；OPENCLAW_CONFIG_PATH 仅指 hook 配置）
 CONFIG_FILE="${OPENCLAW_DIR}/config.json"
-if [ -n "${OPENCLAW_CONFIG_PATH:-}" ]; then
-  CONFIG_FILE="$OPENCLAW_CONFIG_PATH"
-fi
 
 if command -v jq &>/dev/null; then
   check_pass "jq 可用"
