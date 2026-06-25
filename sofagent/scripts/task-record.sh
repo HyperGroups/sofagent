@@ -149,7 +149,7 @@ fi
 if [ "$IS_CLOSURE_CHECK" = true ]; then
   TODAY=$(date +"%Y-%m-%d")
   MONTH=$(date +"%Y-%m")
-  LOG_DIR="${PWD}/.sofagent/task/logs/${MONTH}"
+  LOG_DIR="${SOFAGENT_DATA}/task/logs/${MONTH}"
   LOG_FILE="${LOG_DIR}/${TODAY}.md"
   if [ -f "$LOG_FILE" ]; then
     COUNT=$(grep -c "^## " "$LOG_FILE" 2>/dev/null || true); COUNT=${COUNT:-0}
@@ -182,10 +182,10 @@ sanitize() {
   # 3. JWT token（eyJ 开头的 base64url 三段式）
   input=$(echo "$input" | sed -E 's/eyJ[a-zA-Z0-9_-]+\.eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/***JWT-REDACTED***/g')
   # 4. AWS Access Key（AKIA 开头，20 字符）
-  input=$(echo "$input" | sed -E 's/[[:<:]]AKIA[0-9A-Z]{16}[[:>:]]/***AWS-KEY-REDACTED***/g')
+  # 4–8 使用 \b 词边界（GNU/BSD sed 均支持；[[:<:]] 在 GNU sed 4.x 失效）
+  input=$(echo "$input" | sed -E 's/\bAKIA[0-9A-Z]{16}\b/***AWS-KEY-REDACTED***/g')
   # 5. 凭证赋值（password= / token= / secret= / api_key= / key=）
-  #    加 [[:<:]] 词边界防误伤（如 "monkey=foo" 不会被打码）
-  input=$(echo "$input" | sed -E 's/[[:<:]](password|token|secret|api_key|key)[=:][[:space:]]*[^ ]+/\1=***REDACTED***/g')
+  input=$(echo "$input" | sed -E 's/\b(password|token|secret|api_key|key)[=:][[:space:]]*[^ ]+/\1=***REDACTED***/g')
   # 6. 私钥块（PEM 格式：-----BEGIN ... PRIVATE KEY----- ... -----END）
   input=$(echo "$input" | sed -E '/-----BEGIN .*PRIVATE KEY-----/,/-----END .*PRIVATE KEY-----/{
     s/-----BEGIN .*PRIVATE KEY-----/***PRIVATE-KEY-BLOCK-REDACTED***/
@@ -194,10 +194,10 @@ sanitize() {
   }')
   # 7. 中国大陆手机号（1[3-9] 开头 + 9 位数字，共 11 位）
   #    加 [[:<:]] 词边界，避免误伤订单号、时间戳等长数字串
-  input=$(echo "$input" | sed -E 's/[[:<:]]1[3-9][0-9]{9}[[:>:]]/[PHONE-REDACTED]/g')
+  input=$(echo "$input" | sed -E 's/\b1[3-9][0-9]{9}\b/[PHONE-REDACTED]/g')
   # 8. 内网 IP（可选，SOFA_SANITIZE_IPS=true 时启用）
   if [ "${SOFA_SANITIZE_IPS:-}" = "true" ]; then
-    input=$(echo "$input" | sed -E 's/[[:<:]](10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)[0-9]+\.[0-9]+[[:>:]]/[INTERNAL_IP]/g')
+    input=$(echo "$input" | sed -E 's/\b(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)[0-9]+\.[0-9]+\b/[INTERNAL_IP]/g')
   fi
   echo "$input"
 }

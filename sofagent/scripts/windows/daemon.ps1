@@ -17,7 +17,10 @@ $ErrorActionPreference = "Continue"
 $VERSION_STR = "0.91"
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch {}
 
-# ── 路径（honor SOFAGENT_DATA，缺省 PWD/.sofagent）──
+$cfg = Join-Path $PSScriptRoot "lib\config.ps1"
+if (Test-Path $cfg) { . $cfg }
+
+# ── 路径（config.ps1 解析 SOFAGENT_DATA + .sofagent-data-path 标记）──
 $script:SOFAGENT_DATA = if (-not [string]::IsNullOrEmpty($env:SOFAGENT_DATA)) { $env:SOFAGENT_DATA } else { Join-Path (Get-Location).Path ".sofagent" }
 $script:DAEMON_JSON = Join-Path $script:SOFAGENT_DATA "daemon.json"
 $script:DAEMON_LOG = Join-Path $script:SOFAGENT_DATA "daemon.log"

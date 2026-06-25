@@ -146,8 +146,8 @@ if [ "$QUICK_MODE" = true ]; then
     check_fail "SKILL.md 缺失或宪法关键词不全"
   fi
 
-  # 2. .sofagent/ 数据目录存在
-  if [ -d "${PWD}/.sofagent" ]; then
+  # 2. .sofagent/ 数据目录存在（v0.90 P0-3：用 config.sh 解析的 SOFAGENT_DATA，非 PWD）
+  if [ -d "$SOFAGENT_DATA" ]; then
     check_pass ".sofagent/ 数据目录存在"
   else
     check_warn ".sofagent/ 数据目录不存在（首次使用会自动创建）"
@@ -233,8 +233,8 @@ if [ "$PLATFORM" = "workbuddy" ]; then
     check_warn "Skills 目录不存在"
   fi
 
-  # 数据目录检查
-  if [ -d "${PWD}/.sofagent" ]; then
+  # 数据目录检查（v0.90 P0-3：用 SOFAGENT_DATA，非 PWD）
+  if [ -d "$SOFAGENT_DATA" ]; then
     check_pass ".sofagent/ 数据目录存在"
   else
     check_warn ".sofagent/ 数据目录不存在（首次使用会自动创建）"
@@ -378,8 +378,8 @@ else
       check_warn "  发现 v0.72 前安装残留（${LEGACY_CONST}）——建议运行 install.sh 升级，旧路径将自动迁移"
     fi
   fi
-  # think.md 检查
-  THINK_FILE="${PWD}/.sofagent/think.md"
+  # think.md 检查（v0.90 P0-3：用 SOFAGENT_DATA，非 PWD）
+  THINK_FILE="${SOFAGENT_DATA}/think.md"
   if [ -f "$THINK_FILE" ]; then
     check_pass "think.md 存在（$(wc -m < "$THINK_FILE" | tr -d ' ') 字符）"
   else

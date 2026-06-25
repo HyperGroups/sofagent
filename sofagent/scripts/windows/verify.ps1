@@ -97,7 +97,7 @@ if ($Quick) {
     # PS 5.1 Select-String -Path 用系统编码读文件，改用 .NET API 读 UTF-8
     $skillQuickContent = if ($skillQuick) { [System.IO.File]::ReadAllText($skillQuick) } else { "" }
     if ($skillQuick -and ($skillQuickContent -match "4.*底线|10.*铁律")) { Check-Pass "SKILL.md 存在且含宪法（4底线+10铁律）" } else { Check-Fail "SKILL.md 缺失或宪法关键词不全" }
-    if (Test-Path (Join-Path (Get-Location).Path ".sofagent")) { Check-Pass ".sofagent/ 数据目录存在" } else { Check-Warn ".sofagent/ 数据目录不存在（首次使用会自动创建）" }
+    if (Test-Path $sofagentData) { Check-Pass ".sofagent/ 数据目录存在" } else { Check-Warn ".sofagent/ 数据目录不存在（首次使用会自动创建）" }
     if (Get-Command ao -ErrorAction SilentlyContinue) { Check-Pass "ao compose 可用 — v$(ao --version 2>$null)" } else { Check-Warn "ao compose 不可用——编排引擎降级为默认编排" }
     $rulesQuick = @("$OPENCLAW_DIR\skills\sofagent\rules.md", "$up\.workbuddy\skills\sofagent\rules.md", "$up\.openclaw\rules.md") | Where-Object { Test-Path $_ } | Select-Object -First 1
     if ($rulesQuick) { Check-Pass "rules.md 可读 — $rulesQuick" } else { Check-Warn "rules.md 未找到或不可读" }
@@ -119,7 +119,7 @@ if ($Platform -eq "workbuddy") {
         $cnt = (Get-ChildItem "$up\.workbuddy\skills\sofagent" -Filter *.md -ErrorAction SilentlyContinue | Measure-Object).Count
         Check-Pass "Skills 目录已部署（$cnt 个 .md 文件）"
     } else { Check-Warn "Skills 目录不存在" }
-    if (Test-Path (Join-Path (Get-Location).Path ".sofagent")) { Check-Pass ".sofagent/ 数据目录存在" } else { Check-Warn ".sofagent/ 数据目录不存在（首次使用会自动创建）" }
+    if (Test-Path $sofagentData) { Check-Pass ".sofagent/ 数据目录存在" } else { Check-Warn ".sofagent/ 数据目录不存在（首次使用会自动创建）" }
     Write-Summary "workbuddy"; exit $(if ($script:fail -gt 0) { 1 } else { 0 })
 }
 
@@ -141,10 +141,10 @@ Section "配套脚本（Windows 检查 .ps1）"
 $scriptsDir = Join-Path $OPENCLAW_DIR "scripts"
 if (Test-Path $scriptsDir) {
     Check-Pass "scripts/ 目录存在: $((Get-ChildItem $scriptsDir -Filter *.ps1 -EA SilentlyContinue | Measure-Object).Count) 个 .ps1 文件"
-    foreach ($s in @("task-record.ps1", "task-orchestrate.ps1")) {
+    foreach ($s in @("task-record.ps1", "task-orchestrate.ps1", "skill-safety-check.ps1")) {
         if (Test-Path (Join-Path $scriptsDir $s)) { Check-Pass "  $s 已部署" } else { Check-Warn "  $s 缺失" }
     }
-} else { Check-Warn "scripts/ 目录不存在（Windows 安装器目前不部署脚本，运行时从项目目录调用）" }
+} else { Check-Warn "scripts/ 目录不存在（请先运行 install.ps1 部署脚本）" }
 
 Section "外部依赖"
 if (Get-Command ao -ErrorAction SilentlyContinue) {
