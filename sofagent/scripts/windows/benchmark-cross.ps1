@@ -350,12 +350,9 @@ function Add-ModelToAllowlist($modelId, $configPath) {
 # ── 连通性探测（可选，-TestConnectivity 启用）──────────────
 function Test-ModelConnectivity($modelId) {
     $mShort  = Get-ModelShort $modelId
-    $errTmp  = [System.IO.Path]::GetTempFileName()
     try {
-        $stdOut = & openclaw agent --agent $Agent --model $modelId --session-key "cross-ping-$runId-$($mShort -replace '-','')" `
-                    --message "ping" --json --timeout 30 2>$errTmp | Out-String
-        $errOut = [System.IO.File]::ReadAllText($errTmp, [System.Text.Encoding]::UTF8)
-        $raw    = if (-not [string]::IsNullOrWhiteSpace($stdOut)) { $stdOut } else { $errOut }
+        $raw = & openclaw agent --agent $Agent --model $modelId --session-key "cross-ping-$runId-$($mShort -replace '-','')" `
+                    --message "ping" --json --timeout 30 2>&1 | Out-String
         if ($raw -match '"status"\s*:\s*"ok"') {
             W-Ok "连通正常：$mShort"
             return $true
@@ -369,8 +366,6 @@ function Test-ModelConnectivity($modelId) {
     } catch {
         W-Warn "连通测试异常（$mShort）：$($_.Exception.Message)"
         return $false
-    } finally {
-        Remove-Item $errTmp -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -444,16 +439,11 @@ function Invoke-CrossTask($taskN, $prompt, $passIfPat, $failIfPat, $modelId, $so
     $sessionKey = "cross-$runId-t$taskN-$($mShort -replace '-','')-$($sfLabel.ToLower())"
 
     $raw    = ""
-    $errTmp = [System.IO.Path]::GetTempFileName()
     try {
-        $stdOut = & openclaw agent --agent $Agent --model $modelId --session-key $sessionKey `
-                    --message $prompt --json --timeout $TaskTimeout 2>$errTmp | Out-String
-        $errOut = [System.IO.File]::ReadAllText($errTmp, [System.Text.Encoding]::UTF8)
-        $merged = if (-not [string]::IsNullOrWhiteSpace($stdOut)) { $stdOut } else { $errOut }
+        $merged = & openclaw agent --agent $Agent --model $modelId --session-key $sessionKey `
+                    --message $prompt --json --timeout $TaskTimeout 2>&1 | Out-String
         if ($merged -match '(?s)(\{.+\})') { $raw = $Matches[1] }
-    } catch { $raw = "" } finally {
-        Remove-Item $errTmp -Force -ErrorAction SilentlyContinue
-    }
+    } catch { $raw = "" }
 
     if ([string]::IsNullOrWhiteSpace($raw)) {
         W-Warn "    无响应（超时 ${TaskTimeout}s 或 agent 错误）"
