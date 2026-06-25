@@ -24,7 +24,7 @@
 
 set -euo pipefail
 
-VERSION="0.84"
+VERSION="0.91"
 
 # ── 加载合规配置 ──
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -161,7 +161,7 @@ if [ "$IS_CLOSURE_CHECK" = true ]; then
 fi
 
 # ── 路径 ──
-SOFAGENT_DATA="${PWD}/.sofagent"
+# v0.90 P0-3 修复：SOFAGENT_DATA 由 lib/config.sh 统一解析（已 source）
 TODAY=$(date +"%Y-%m-%d")
 MONTH=$(date +"%Y-%m")
 LOG_DIR="${SOFAGENT_DATA}/task/logs/${MONTH}"

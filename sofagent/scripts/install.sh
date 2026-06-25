@@ -18,7 +18,7 @@
 # ============================================================
 
 set -euo pipefail
-VERSION="0.84"
+VERSION="0.91"
 
 # ── 颜色输出 ──
 RED='\033[0;31m'
@@ -66,6 +66,13 @@ _detect_env() {
 
 RUNTIME_ENV=$(_detect_env)
 
+# v0.90 P0-1 修复：提前保存原始参数 + 预扫描 --remote
+# 原因：远程安装检查在完整参数解析之前执行，需要先拿到 REMOTE_MODE 和 ORIGINAL_ARGS
+ORIGINAL_ARGS=("$@")
+for _arg in "$@"; do
+  [ "$_arg" = "--remote" ] && REMOTE_MODE=1
+done
+
 # ── 欢迎 ──
 if [ "$QUICK_MODE" = "0" ]; then
 echo ""
@@ -98,9 +105,9 @@ if [ "${REMOTE_MODE}" = "1" ]; then
     cd "$REMOTE_TMP"
     # 重新调用 install.sh，去掉 --remote，透传其他参数
     REMAINING_ARGS=""
-    for arg in "${ORIGINAL_ARGS[@]}"; do
-      [ "$arg" = "--remote" ] && continue
-      REMAINING_ARGS="$REMAINING_ARGS $arg"
+    for _arg in "${ORIGINAL_ARGS[@]}"; do
+      [ "$_arg" = "--remote" ] && continue
+      REMAINING_ARGS="$REMAINING_ARGS $_arg"
     done
     exec bash sofagent/scripts/install.sh $REMAINING_ARGS
   else
@@ -122,8 +129,8 @@ info "Step 1/7 · 确定安装平台..."
 PLATFORM=""
 QUICK_MODE=0  # v0.73: --quick 模式跳过交互确认
 NO_DAEMON=0   # v0.84: --no-daemon 跳过 daemon 安装
-REMOTE_MODE=0
-ORIGINAL_ARGS=("$@")  # 保存原始参数（--remote 模式下透传用）
+LITE_MODE=0   # v0.85: --lite 精简模式（= --quick + --no-ao + --no-daemon + --no-config-inject）
+# v0.90 P0-1 修复：REMOTE_MODE 和 ORIGINAL_ARGS 已在远程检查前提前初始化，此处不再重复
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --platform)     PLATFORM="$2"; shift 2 ;;
@@ -136,6 +143,7 @@ while [[ $# -gt 0 ]]; do
     --ci)            QUICK_MODE=1; shift ;;  # --ci = --quick 别名，CI 环境用
     --no-daemon)     NO_DAEMON=1; shift ;;   # v0.84: 跳过 daemon 安装
     --skip-daemon)   NO_DAEMON=1; shift ;;   # 别名
+    --lite)          LITE_MODE=1; QUICK_MODE=1; NO_AO=1; NO_DAEMON=1; NO_CONFIG_INJECT=1; shift ;;  # v0.85: 轻量安装
     --remote)        REMOTE_MODE=1; shift ;;
     -h|--help)
       echo "用法: install.sh [--platform openclaw|workbuddy|claude|codex|hermes] [--project-dir DIR]"
@@ -150,6 +158,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --no-ao             跳过 agency-orchestrator 全局安装（企业环境用）"
       echo "  --no-config-inject  跳过自动注入 OpenClaw config.json（企业环境用）"
       echo "  --quick             快速模式——跳过交互确认和验证等待，直接完整安装"
+      echo "  --lite              精简模式——仅部署核心约束文件，跳过 AO/daemon/配置注入（= --quick + --no-ao + --no-daemon + --no-config-inject）"
       echo "  --remote            远程安装模式——自动 git clone 仓库后安装（配合 curl pipe bash 使用）"
       exit 0
       ;;
@@ -189,6 +198,16 @@ fi
 # ── 统一初始化数据目录路径（所有平台共用，避免 set -u 下未定义）──
 # 用 ${VAR:-...} 保留外部 SOFAGENT_DATA 覆盖能力（fork 修复）
 SOFAGENT_DATA="${SOFAGENT_DATA:-${PROJECT_DIR}/.sofagent}"
+
+# v0.90 P0-3 修复：写入数据目录标记文件，供 audit/verify/orchestrate 等脚本定位
+# 标记文件放在平台 skill 目录下，config.sh 读取它来还原 --project-dir 指定的路径
+case "$PLATFORM" in
+  openclaw|workbuddy)
+    _SKILL_DIR="${TARGET:-${HOME}/.${PLATFORM}/skills/sofagent}"
+    mkdir -p "$_SKILL_DIR" 2>/dev/null || true
+    echo "$SOFAGENT_DATA" > "$_SKILL_DIR/.sofagent-data-path" 2>/dev/null || true
+    ;;
+esac
 
 # ── 按平台确定目标路径 ──
 case "$PLATFORM" in
@@ -463,19 +482,39 @@ disable: true
   fi
 fi
 
+# Lite 模式：创建 think.md 空模板
+if [ "${LITE_MODE:-0}" = "1" ]; then
+  mkdir -p "$SOFAGENT_DATA"  # v0.90 P0-2 修复：Lite 跳过 Step 5b，需提前创建数据目录
+  THINK_DST="${SOFAGENT_DATA}/think.md"
+  if [ ! -f "$THINK_DST" ]; then
+    cat > "$THINK_DST" << 'THINK_TEMPLATE'
+# 反思区（think.md）
+
+> sofagent 反思区——自动记录每次任务的教训和经验。
+> 任务闭环后由 task-closure 自动更新，30 天衰减。
+
+（暂无反思记录）
+THINK_TEMPLATE
+    ok "think.md 模板已创建: $THINK_DST"
+  else
+    ok "think.md 已存在，跳过"
+  fi
+fi
+
 # ════════════════════════════════════════
 # Step 5b: 部署配套脚本 + 数据目录（所有平台公共步骤）
 # ════════════════════════════════════════
 # P0-2/P0-3 修复：配套脚本部署和 .sofagent/ 数据目录创建不再限于 OpenClaw，
 # 对所有平台（WorkBuddy / Claude / Codex / Hermes）均执行。
 
+if [ "${LITE_MODE:-0}" != "1" ]; then
 info "Step 5b/7 · 部署配套脚本 + 数据目录 → $TARGET"
 
-# 部署配套脚本（task-record + task-orchestrate + cleanup + audit + compress-memory）
+# 部署配套脚本（task-record + task-orchestrate + cleanup + audit + compress-memory + skill-safety-check）
 SCRIPTS_DST="${TARGET}/scripts"
 mkdir -p "$SCRIPTS_DST"
 
-for script in task-record.sh task-orchestrate.sh cleanup.sh audit.sh compress-memory.sh; do
+for script in task-record.sh task-orchestrate.sh cleanup.sh audit.sh compress-memory.sh skill-safety-check.sh; do
   src="${SCRIPT_DIR}/${script}"
   dst="${SCRIPTS_DST}/${script}"
   if [ -f "$src" ]; then
@@ -507,10 +546,14 @@ else
   ok "数据目录已存在: $SOFAGENT_DATA"
 fi
 
+else
+  info "Lite 模式：跳过配套脚本 + 数据目录"
+fi
+
 # ════════════════════════════════════════
 # Step 6: 部署加载链 Hook（仅 OpenClaw）
 # ════════════════════════════════════════
-if [ "$PLATFORM" = "openclaw" ]; then
+if [ "$PLATFORM" = "openclaw" ] && [ "${LITE_MODE:-0}" != "1" ]; then
 info "Step 6/7 · 部署加载链 Hook（OpenClaw 2026.6.x 内部 hook 架构）..."
 
 # OpenClaw 2026.6.x 改用声明式内部 hook：把 HOOK.md + handler.ts 放到
@@ -597,6 +640,8 @@ else
   warn "  仓库结构异常？请从 https://github.com/KongFangXun/sofagent 重新拉取"
 fi
 
+elif [ "${LITE_MODE:-0}" = "1" ]; then
+  info "Lite 模式：跳过 Hook 部署"
 fi  # end OpenClaw-only Step 6
 
 # ════════════════════════════════════════
@@ -758,6 +803,20 @@ fi
 # ════════════════════════════════════════
 # 安装完成 · 使用说明（按平台）
 # ════════════════════════════════════════
+if [ "${LITE_MODE:-0}" = "1" ]; then
+  echo ""
+  echo "  ╔══════════════════════════════════════════╗"
+  echo "  ║  sofagent Lite · 安装完成！              ║"
+  echo "  ╚══════════════════════════════════════════╝"
+  echo ""
+  echo "  已部署：宪法（SKILL.md）+ 反思区（think.md）+ 规则（rules.md）"
+  echo "  跳过：编排引擎 / Hook / 断路器 / daemon / 配套脚本"
+  echo ""
+  echo "  降 80% 复杂度，保 60% 价值。"
+  echo "  非交互式平台推荐先用 Lite 体验核心约束。"
+  echo ""
+  exit 0
+fi
 echo ""
 echo "  ╔══════════════════════════════════════════╗"
 echo "  ║  sofagent · 安装完成！                  ║"
@@ -770,7 +829,7 @@ case "$PLATFORM" in
     echo "    宪法文件:      $TARGET/skills/sofagent/rules.md（宪法内联在 SKILL.md）"
     echo "    Skill 文件:     $TARGET/skills/sofagent/（6 核心 + 4 数据模板）"
     echo "    加载链 Hook:    $TARGET/hooks/sofagent-load-chain/（HOOK.md + handler.ts）"
-    echo "    配套脚本:       $TARGET/scripts/{task-record,task-orchestrate,cleanup,audit,compress-memory}.sh"
+    echo "    配套脚本:       $TARGET/scripts/{task-record,task-orchestrate,cleanup,audit,compress-memory,skill-safety-check}.sh"
     echo "    断路器:         ${CONFIG_FILE:-未配置}（tools.loopDetection）"
     echo "    数据目录:       $SOFAGENT_DATA"
     echo ""

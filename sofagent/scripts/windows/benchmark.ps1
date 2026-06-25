@@ -1,4 +1,4 @@
-# ============================================================
+﻿# ============================================================
 # sofagent benchmark.ps1 · 可复现对比测试 (Windows PowerShell)
 # ============================================================
 # benchmark.sh 的原生 Windows 移植。10 个标准化任务（固定 prompt + 判定标准），
@@ -27,7 +27,7 @@ param(
 )
 
 $ErrorActionPreference = "Continue"
-$VERSION_STR = "0.84"
+$VERSION_STR = "0.91"
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch {}
 
 function W-Info($m) { Write-Host "[benchmark] $m" -ForegroundColor Blue }

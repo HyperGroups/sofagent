@@ -68,10 +68,15 @@ fi
 # set -o pipefail: 管道中任一命令失败都计为失败，防止 `grep | wc` 等忽略中间错误
 set -euo pipefail
 
-VERSION="0.84"
+VERSION="0.91"
 
 # ── 确定脚本目录 ──
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# ── 加载配置（v0.90 P0-3：统一数据目录解析）──
+if [ -f "${SCRIPT_DIR}/lib/config.sh" ]; then
+  source "${SCRIPT_DIR}/lib/config.sh"
+fi
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 info()  { echo -e "${BLUE}[orchestrate]${NC} $1"; }
@@ -168,8 +173,7 @@ bash "${SCRIPT_DIR}/audit.sh" --operation "orchestrate" --target "${TASK_DESC}" 
 TASK_SLUG=$(echo "$TASK_DESC" | { shasum -a 256 2>/dev/null || sha256sum 2>/dev/null; } | cut -c1-8 || echo "unknown")
 
 # ── 读取 orchestrator/ 配置（如果存在）──
-# honor SOFAGENT_DATA 环境变量（与 install.sh --project-dir / load-chain.sh 对齐）；缺省回退 PWD
-SOFAGENT_DATA="${SOFAGENT_DATA:-${PWD}/.sofagent}"
+# v0.90 P0-3 修复：SOFAGENT_DATA 由 lib/config.sh 统一解析
 ORCHESTRATOR_DIR="${SOFAGENT_DATA}/orchestrator"
 WORKFLOWS_DIR="${ORCHESTRATOR_DIR}/workflows"
 mkdir -p "$WORKFLOWS_DIR" 2>/dev/null || true

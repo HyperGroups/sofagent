@@ -6,7 +6,7 @@
 # 仅 rules.md audit_enabled: true 时写入（默认关闭，静默退出）。
 #
 # 用法：
-#   audit.ps1 -Operation install -Target "开始" -Result "v0.84, windows"
+#   audit.ps1 -Operation install -Target "开始" -Result "v0.91, windows"
 #   audit.ps1 -Operation orchestrate -Target "重构模块" -Result "成功, L2, 45s"
 # ============================================================
 
@@ -19,7 +19,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$VERSION_STR = "0.84"
+$VERSION_STR = "0.91"
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch {}
 
 if ($Version) { Write-Host "sofagent-audit v$VERSION_STR"; exit 0 }

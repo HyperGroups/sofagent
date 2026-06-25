@@ -20,12 +20,18 @@ param(
     [string]$ProjectDir = "",
     [switch]$NoAO,
     [switch]$NoConfigInject,
+    [switch]$NoDaemon,
     [switch]$WithDaemon,
+    [switch]$Quick,
+    [switch]$Lite,
     [switch]$Help
 )
 
 $ErrorActionPreference = "Stop"
-$VERSION = "0.84"
+$VERSION = "0.91"
+
+# v0.85: Lite = Quick + NoAO + NoDaemon + NoConfigInject
+if ($Lite) { $Quick = $true; $NoAO = $true; $NoDaemon = $true; $NoConfigInject = $true }
 
 # ── 颜色输出 ──
 function Write-Info  { param($msg) Write-Host "[sofagent] $msg" -ForegroundColor Cyan }
@@ -48,7 +54,10 @@ if ($Help) {
     Write-Host "  -ProjectDir      项目工作目录（.sofagent/ 数据目录位置）"
     Write-Host "  -NoAO            跳过 agency-orchestrator 安装（仅 openclaw 相关）"
     Write-Host "  -NoConfigInject  跳过 OpenClaw 断路器 loopDetection 注入"
+    Write-Host "  -NoDaemon        跳过 daemon 安装（默认行为；需 daemon 时用 -WithDaemon）"
     Write-Host "  -WithDaemon      安装后台 daemon（Windows 计划任务，监控 think.md/rules.md）"
+    Write-Host "  -Quick           快速模式——跳过交互确认"
+    Write-Host "  -Lite            精简模式——仅部署核心约束文件，跳过脚本/Hook/daemon（= -Quick -NoAO -NoDaemon -NoConfigInject）"
     Write-Host "  -Help            显示此帮助"
     Write-Host ""
     Write-Host "平台说明:"
@@ -119,7 +128,8 @@ if ([string]::IsNullOrEmpty($ProjectDir)) {
     $ProjectDir = (Resolve-Path $ProjectDir).Path
 }
 
-$SOFAGENT_DATA = Join-Path $ProjectDir ".sofagent"
+$SOFAGENT_DATA = if (-not [string]::IsNullOrEmpty($env:SOFAGENT_DATA)) { $env:SOFAGENT_DATA } else { Join-Path $ProjectDir ".sofagent" }
+$env:SOFAGENT_DATA = $SOFAGENT_DATA
 Write-Ok "数据目录: $SOFAGENT_DATA"
 
 # ── 确定目标路径 ──
@@ -133,6 +143,13 @@ switch ($Platform) {
 }
 
 Write-Ok "平台: $Platform → 目标: $TARGET"
+
+# v0.90 P0-3：写入数据目录标记，供 config.ps1 还原 -ProjectDir 路径
+if ($Platform -in @("openclaw", "workbuddy")) {
+    $skillMarkerDir = Join-Path $TARGET "skills\sofagent"
+    New-Item -ItemType Directory -Force -Path $skillMarkerDir | Out-Null
+    [System.IO.File]::WriteAllText((Join-Path $skillMarkerDir ".sofagent-data-path"), ($SOFAGENT_DATA + "`n"), (New-Object System.Text.UTF8Encoding $false))
+}
 
 # ── 检查源文件 ──
 if (-not (Test-Path $SKILL_SRC_DIR)) {
@@ -230,7 +247,7 @@ if (Test-Path $_constraintsSrc) {
     Write-Warn "constraints.md 源文件不存在：$_constraintsSrc（嵌入模式约束注入将 fallback 到 SKILL.md）"
 }
 
-# v0.84: SKILL.md 部署后确保 disable: true（防止安装副本被平台自动加载）
+# v0.91: SKILL.md 部署后确保 disable: true（防止安装副本被平台自动加载）
 $deployedSkill = Join-Path $SKILL_DST "SKILL.md"
 if (Test-Path $deployedSkill) {
     $skillLines = Get-Content $deployedSkill -Encoding UTF8
@@ -252,9 +269,30 @@ if (Test-Path $deployedSkill) {
     }
 }
 
+# Lite 模式：创建 think.md 空模板（v0.90 P0-2：Lite 跳过 Step 5b，需提前创建数据目录）
+if ($Lite) {
+    New-Item -ItemType Directory -Force -Path $SOFAGENT_DATA | Out-Null
+    $thinkDst = Join-Path $SOFAGENT_DATA "think.md"
+    if (-not (Test-Path $thinkDst)) {
+        $thinkTpl = @"
+# 反思区（think.md）
+
+> sofagent 反思区——自动记录每次任务的教训和经验。
+> 任务闭环后由 task-closure 自动更新，30 天衰减。
+
+（暂无反思记录）
+"@
+        [System.IO.File]::WriteAllText($thinkDst, ($thinkTpl + "`n"), (New-Object System.Text.UTF8Encoding $false))
+        Write-Ok "think.md 模板已创建: $thinkDst"
+    } else {
+        Write-Ok "think.md 已存在，跳过"
+    }
+}
+
 # ════════════════════════════════════════
 # Step 2.5: 部署 .ps1 运行时脚本（供 {OPENCLAW_SCRIPTS} 在部署后解析）
 # ════════════════════════════════════════
+if (-not $Lite) {
 Write-Info "部署运行时脚本 → $TARGET\scripts\"
 $scriptsDst = Join-Path $TARGET "scripts"
 $libDst = Join-Path $scriptsDst "lib"
@@ -270,6 +308,9 @@ if (Test-Path $libSrc) {
     }
 }
 Write-Ok "$psCount 个 .ps1 脚本已部署到 $scriptsDst"
+} else {
+    Write-Info "Lite 模式：跳过配套脚本部署"
+}
 
 # ════════════════════════════════════════
 # Step 3: 部署 rules.md
@@ -303,6 +344,7 @@ if (Test-Path $rulesSrc) {
 # ════════════════════════════════════════
 # Step 4: 创建 .sofagent/ 数据目录
 # ════════════════════════════════════════
+if (-not $Lite) {
 Write-Info "Step 4/4 · 初始化数据目录 → $SOFAGENT_DATA"
 
 if (-not (Test-Path $SOFAGENT_DATA)) {
@@ -319,11 +361,12 @@ if (-not (Test-Path $SOFAGENT_DATA)) {
         New-Item -ItemType Directory -Path (Join-Path $SOFAGENT_DATA "orchestrator\workflows") -Force | Out-Null
     }
 }
+}
 
 # ════════════════════════════════════════
 # Step 5a（仅 OpenClaw）：安装 ao 编排引擎（对齐 install.sh Step 3，受 -NoAO 控）
 # ════════════════════════════════════════
-if ($Platform -eq "openclaw" -and -not $NoAO) {
+if ($Platform -eq "openclaw" -and -not $NoAO -and -not $Lite) {
     Write-Info "OpenClaw · 安装编排引擎 agency-orchestrator..."
     if (Get-Command ao -ErrorAction SilentlyContinue) {
         $aoVer = (& ao --version 2>$null); if (-not $aoVer) { $aoVer = "unknown" }
@@ -358,7 +401,7 @@ if ($Platform -eq "openclaw" -and -not $NoAO) {
 # ════════════════════════════════════════
 # Step 5（仅 OpenClaw）：部署加载链 Hook + 注入断路器（对齐 install.sh Step 6/7）
 # ════════════════════════════════════════
-if ($Platform -eq "openclaw") {
+if ($Platform -eq "openclaw" -and -not $Lite) {
     $utf8b = New-Object System.Text.UTF8Encoding $false
     # ── Hook 部署 ──
     Write-Info "OpenClaw · 部署加载链 Hook..."
@@ -442,7 +485,7 @@ if ($Platform -in @("claude", "codex", "hermes")) {
 # ════════════════════════════════════════
 # 注：install.sh 在 Windows 上跳过 daemon（用 launchd/systemd）；本 .ps1 的 daemon 原生支持
 # Windows（Register-ScheduledTask），故这里提供 -WithDaemon 开关。
-if ($WithDaemon) {
+if ($WithDaemon -and -not $Lite) {
     Write-Info "安装 daemon（Windows 计划任务，监控 think.md/rules.md 变化）..."
     $daemonInstall = Join-Path $SCRIPT_DIR "daemon-install.ps1"
     if (Test-Path $daemonInstall) {
@@ -456,6 +499,21 @@ if ($WithDaemon) {
 # ════════════════════════════════════════
 # 安装完成
 # ════════════════════════════════════════
+if ($Lite) {
+    Write-Host ""
+    Write-Host "  +======================================+"
+    Write-Host "  |  sofagent Lite · 安装完成！          |"
+    Write-Host "  +======================================+"
+    Write-Host ""
+    Write-Host "  已部署：宪法（SKILL.md）+ 反思区（think.md）+ 规则（rules.md）"
+    Write-Host "  跳过：编排引擎 / Hook / 断路器 / daemon / 配套脚本"
+    Write-Host ""
+    Write-Host "  降 80% 复杂度，保 60% 价值。"
+    Write-Host "  非交互式平台推荐先用 Lite 体验核心约束。"
+    Write-Host ""
+    exit 0
+}
+
 Write-Host ""
 Write-Host "  +====================================+"
 Write-Host "  |  sofagent · 安装完成！             |"
